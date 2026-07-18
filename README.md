@@ -168,6 +168,18 @@ mongosh "mongodb://localhost:27017"
 
 ---
 
+## Pictures
+
+<p align="center">
+  <img width="49%" alt="home_page" src="https://github.com/user-attachments/assets/fa1b7678-3abc-4216-95e4-8155ff3477a6" />
+  <img width="49%" alt="Prediction_page" src="https://github.com/user-attachments/assets/71f224c5-64d0-41a8-b82f-3b9e9a2a8fad" />
+</p>
+<p align="center">
+  <img width="49%" alt="Prediction_result" src="https://github.com/user-attachments/assets/b18972d8-3d2d-456f-96e1-bb2bb684b8b2" />
+  <img width="49%" alt="Prediction_result2" src="https://github.com/user-attachments/assets/ef6cf9b4-38ca-4bce-ac50-5b39ca50535f" />
+</p>
+
+
 ## 🚀 How to Run
 
 ### 1. Model Training
