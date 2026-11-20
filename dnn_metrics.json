@@ -1,0 +1,149 @@
+{
+  "model": "Multi-task DNN (PyTorch MLP)",
+  "sample_fraction": 0.5,
+  "rows": {
+    "usable": 3371702,
+    "train": 2697361,
+    "val": 337170,
+    "test": 337171
+  },
+  "delayed_ratio": 0.1985955387353897,
+  "feature_count": 36,
+  "epochs_run": 15,
+  "best_epoch": 15,
+  "train_seconds": 754.0,
+  "test": {
+    "accuracy": 0.814382,
+    "auc": 0.730575,
+    "precision": 0.646865,
+    "recall": 0.14392,
+    "f1": 0.235454,
+    "mae_minutes": 37.375965,
+    "rmse_minutes": 63.084105,
+    "r2": -0.039061,
+    "mae_minutes_all_flights": 48.649483,
+    "delayed_test_rows": 66961
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.82875,
+      "val_loss": 0.80421,
+      "val_accuracy": 0.80679,
+      "val_auc": 0.70661,
+      "val_mae_minutes": 37.725
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.80817,
+      "val_loss": 0.79968,
+      "val_accuracy": 0.8088,
+      "val_auc": 0.71198,
+      "val_mae_minutes": 37.644
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.80445,
+      "val_loss": 0.79597,
+      "val_accuracy": 0.81005,
+      "val_auc": 0.71467,
+      "val_mae_minutes": 37.611
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.80192,
+      "val_loss": 0.79559,
+      "val_accuracy": 0.81091,
+      "val_auc": 0.71676,
+      "val_mae_minutes": 37.495
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.79978,
+      "val_loss": 0.79186,
+      "val_accuracy": 0.81119,
+      "val_auc": 0.71922,
+      "val_mae_minutes": 37.455
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.79791,
+      "val_loss": 0.79016,
+      "val_accuracy": 0.81169,
+      "val_auc": 0.72152,
+      "val_mae_minutes": 37.455
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.79635,
+      "val_loss": 0.78864,
+      "val_accuracy": 0.81197,
+      "val_auc": 0.72367,
+      "val_mae_minutes": 37.401
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.79504,
+      "val_loss": 0.78815,
+      "val_accuracy": 0.81263,
+      "val_auc": 0.7248,
+      "val_mae_minutes": 37.37
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.79375,
+      "val_loss": 0.78666,
+      "val_accuracy": 0.81291,
+      "val_auc": 0.72696,
+      "val_mae_minutes": 37.376
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.79281,
+      "val_loss": 0.78624,
+      "val_accuracy": 0.81361,
+      "val_auc": 0.72782,
+      "val_mae_minutes": 37.316
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.79191,
+      "val_loss": 0.78464,
+      "val_accuracy": 0.81411,
+      "val_auc": 0.72902,
+      "val_mae_minutes": 37.411
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.79103,
+      "val_loss": 0.78366,
+      "val_accuracy": 0.81417,
+      "val_auc": 0.73062,
+      "val_mae_minutes": 37.323
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.79017,
+      "val_loss": 0.78357,
+      "val_accuracy": 0.81416,
+      "val_auc": 0.7314,
+      "val_mae_minutes": 37.297
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.78924,
+      "val_loss": 0.78223,
+      "val_accuracy": 0.81497,
+      "val_auc": 0.73297,
+      "val_mae_minutes": 37.241
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.78848,
+      "val_loss": 0.78082,
+      "val_accuracy": 0.81477,
+      "val_auc": 0.73421,
+      "val_mae_minutes": 37.281
+    }
+  ]
+}

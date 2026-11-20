@@ -36,8 +36,6 @@ flight_delay/weather_meteo_by_airport.csv
 # Uncomment the line below if you prefer to ignore all large CSVs in flight_delay/
 # flight_delay/*.csv
 
-# Spark ML Models (Large folder structure containing stages and parquet data)
-gbt_full_pipeline/
 
 # Machine Learning model checkpoints and large exports (Keep small pkl metadata if needed)
 # If you want to force users to train models before running, uncomment these:
@@ -47,6 +45,10 @@ gbt_full_pipeline/
 # They can be committed to allow offline dashboard rendering, but if you want a minimal repo:
 # static/viz_data/weather_vs_delay.csv
 # static/viz_data/weather_vs_delay.json
+
+# Open-Meteo response cache (forecasts + archive downloads). Regenerated on demand;
+# wx_calibration.json IS tracked - it is small and required for correct serving.
+.wx_cache/
 
 # IDE Settings and Editors
 .vscode/
