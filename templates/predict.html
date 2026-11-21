@@ -67,7 +67,7 @@
                     <ul>
                         <li>You enter: Airline, Departure airport, Arrival airport, Date &amp; Time</li>
                         <li>AI auto-fills: Weather, flight duration, route type, and more</li>
-                        <li>Model predicts: Delay Risk with confidence score</li>
+                        <li>Model predicts: Delay Risk, confidence score &amp; estimated delay minutes</li>
                     </ul>
                 </div>
 
@@ -139,11 +139,11 @@
 
                     <!-- ── Auto-filled Panel ── -->
                     <div id="autofillPanel" style="display:{% if autofill %}block{% else %}none{% endif %}; margin: 18px 0;">
-                        <div style="display:inline-flex;align-items:center;gap:6px;
+                        <div id="afBadge" style="display:inline-flex;align-items:center;gap:6px;
                                     background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.30);
                                     color:#6366f1;font-size:0.75rem;font-weight:700;
                                     padding:4px 14px;border-radius:20px;margin-bottom:12px;">
-                            ⚡ Auto-filled from Historical Data
+                            ⚡ Auto-filled{% if autofill and autofill.weather_source %} · {{ autofill.weather_source }}{% endif %}
                         </div>
 
                         <div style="display:grid;gap:6px;">
@@ -152,7 +152,7 @@
                                 ('Weekend Flight',     'af_weekend', autofill.is_weekend if autofill else ''),
                                 ('Est. Flight Duration','af_dur',   (autofill.flight_duration|string + ' mins') if autofill else ''),
                                 ('Route Type',         'af_route',  autofill.route_type if autofill else ''),
-                                ('Avg Temperature',    'af_temp',   (autofill.tavg|string + '°C (historical avg for ' + (form_values.dep_airport if form_values else '') + ')') if autofill else ''),
+                                ('Avg Temperature',    'af_temp',   (autofill.tavg|string + '°C') if autofill else ''),
                                 ('Precipitation',      'af_prcp',   (autofill.prcp|string + ' mm') if autofill else ''),
                                 ('Wind Speed',         'af_wspd',   (autofill.wspd|string + ' km/h') if autofill else ''),
                                 ('Air Pressure',       'af_pres',   (autofill.pres|string + ' hPa') if autofill else ''),
@@ -185,6 +185,22 @@
                         <p style="color:{{ prediction.color }};font-weight:600;margin-top:4px;">
                             {{ prediction.verdict }}
                         </p>
+                        <div style="display:inline-block;margin-top:8px;padding:3px 12px;
+                                    background:rgba(99,102,241,0.10);
+                                    border:1px solid rgba(99,102,241,0.25);
+                                    border-radius:999px;font-size:0.72rem;
+                                    font-weight:700;color:#6366f1;">
+                            🤖 {{ prediction.model_used }}
+                        </div>
+                        {% if prediction.weather_source %}
+                        <div style="display:inline-block;margin-top:8px;margin-left:6px;padding:3px 12px;
+                                    background:rgba(16,185,129,0.10);
+                                    border:1px solid rgba(16,185,129,0.25);
+                                    border-radius:999px;font-size:0.72rem;
+                                    font-weight:700;color:#059669;">
+                            🌤 {{ prediction.weather_source }}
+                        </div>
+                        {% endif %}
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
                             <div>
                                 <div style="font-size:0.75rem;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Delay Probability</div>
@@ -209,7 +225,7 @@
                                 ~{{ prediction.est_delay_mins }} mins
                             </div>
                             <div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;">
-                                GBT Regression model estimate
+                                {{ prediction.reg_model_label }}
                             </div>
                         </div>
                         {% endif %}
@@ -232,19 +248,32 @@
                 {% if stats %}
                 <div class="stats-box">
                     <h3>📊 System Analytics</h3>
+                    {% if model_info.train_rows is defined %}
+                    <p style="font-size:0.78rem;color:#64748b;margin:-6px 0 10px;">
+                        Active model: <strong style="color:#6366f1;">{{ model_info.label }}</strong>
+                        · trained on {{ "{:,}".format(model_info.train_rows) }} flights
+                        {% if model_info.auc is defined %}· AUC {{ model_info.auc }}{% endif %}
+                    </p>
+                    {% endif %}
                     <div class="stats-grid">
                         <div class="stat-item">
                             <span class="stat-label">Total Flights Analyzed</span>
-                            <span class="stat-value">1,966,327</span>
+                            <span class="stat-value">{{ "{:,}".format(stats.total_flights) }}</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Avg Delay</span>
-                            <span class="stat-value">12.4 min</span>
+                            <span class="stat-value">{{ stats.avg_delay }} min</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Model Accuracy</span>
-                            <span class="stat-value">80.88%</span>
+                            <span class="stat-value">{{ stats.model_accuracy }}</span>
                         </div>
+                        {% if stats.regressor_mae is defined %}
+                        <div class="stat-item">
+                            <span class="stat-label">Delay Est. Error</span>
+                            <span class="stat-value">±{{ stats.regressor_mae }} min</span>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}
@@ -255,6 +284,11 @@
 
     <footer class="footer">
         <p>&copy; 2024 Aero Predict - AI-Powered Big Data Flight Delay Prediction</p>
+        <p style="font-size:0.72rem;opacity:0.75;margin-top:4px;">
+            Live weather: <a href="https://open-meteo.com/" target="_blank" rel="noopener"
+                             style="color:inherit;text-decoration:underline;">Open-Meteo.com</a>
+            (CC BY 4.0) · dates beyond the 15-day horizon use 2023 monthly climatology
+        </p>
     </footer>
 
     <script>
@@ -288,10 +322,11 @@
                 document.getElementById('af_weekend').textContent = d.is_weekend;
                 document.getElementById('af_dur').textContent     = d.flight_duration + ' mins';
                 document.getElementById('af_route').textContent   = d.route_type;
-                document.getElementById('af_temp').textContent    = d.tavg + '°C (historical avg for ' + dep + ')';
+                document.getElementById('af_temp').textContent    = d.tavg + '°C · ' + d.weather_source;
                 document.getElementById('af_prcp').textContent    = d.prcp + ' mm';
                 document.getElementById('af_wspd').textContent    = d.wspd + ' km/h';
                 document.getElementById('af_pres').textContent    = d.pres + ' hPa';
+                document.getElementById('afBadge').textContent    = '⚡ Auto-filled · ' + d.weather_source;
                 document.getElementById('autofillPanel').style.display = 'block';
             } catch(e) { console.warn('Autofill error:', e); }
         }

@@ -404,14 +404,37 @@
             </h2>
 
             <div class="setting-group">
-                <label for="model-version">Prediction Model Version:</label>
-                <select class="select-dropdown" id="model-version">
-                    <option value="v2" selected>GBT Model V2 (Current)</option>
-                    <option value="v1">GBT Model V1</option>
-                    <option value="experimental">Experimental Model</option>
-                </select>
+                <div class="setting-label">
+                    <label>Active Prediction Model:</label>
+                    <span class="value" style="color:#10b981;">● Loaded</span>
+                </div>
                 <div class="info-box">
-                    <strong>Tip:</strong> GBT Model V2 provides the highest accuracy with recent data patterns.
+                    <strong>{{ model_info.label }}</strong> — multi-task DNN, one forward pass
+                    returns both the delay probability and the delay minutes.
+                    {% if model_info.accuracy is defined %}
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+                                gap:8px;margin-top:10px;">
+                        <div><span style="color:#64748b;">Test accuracy</span><br>
+                             <strong>{{ model_info.accuracy }}</strong></div>
+                        <div><span style="color:#64748b;">AUC-ROC</span><br>
+                             <strong>{{ model_info.auc }}</strong></div>
+                        <div><span style="color:#64748b;">Delay MAE</span><br>
+                             <strong>±{{ model_info.mae }} min</strong></div>
+                        {% if model_info.train_rows is defined %}
+                        <div><span style="color:#64748b;">Training flights</span><br>
+                             <strong>{{ "{:,}".format(model_info.train_rows) }}</strong></div>
+                        <div><span style="color:#64748b;">Parameters</span><br>
+                             <strong>{{ "{:,}".format(model_info.parameters) }}</strong></div>
+                        <div><span style="color:#64748b;">Delayed share</span><br>
+                             <strong>{{ model_info.delayed_pct }}%</strong></div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="info-box">
+                    <strong>Tip:</strong> the served model is chosen automatically at startup:
+                    DNN V2 (full dataset) → DNN V1 (50% baseline) → Spark GBT → SVM.
+                    To change it, retrain with <code>python train_dnn_v2.py</code> and restart the app.
                 </div>
             </div>
 
@@ -628,7 +651,7 @@
 
         // Store settings in localStorage
         document.addEventListener('DOMContentLoaded', function() {
-            const settings = ['model-version', 'confidence-threshold', 'prediction-horizon', 
+            const settings = ['confidence-threshold', 'prediction-horizon', 
                             'delay-alerts', 'cancellation-alerts', 'weather-alerts', 'alert-method',
                             'data-timeframe', 'auto-refresh', 'refresh-interval', 'export-data',
                             'theme', 'language', 'detailed-charts'];

@@ -1,0 +1,39 @@
+{
+ "rows": 40000,
+ "delayed_ratio": 0.2096,
+ "results": [
+  {
+   "weather_source": "dataset",
+   "auc": 0.8073,
+   "accuracy_at_0.5": 0.845,
+   "mae_delayed": 34.52,
+   "mean_prob": 0.1854,
+   "coverage": 1.0
+  },
+  {
+   "weather_source": "climatology",
+   "auc": 0.786,
+   "accuracy_at_0.5": 0.8368,
+   "mae_delayed": 35.27,
+   "mean_prob": 0.1855,
+   "coverage": 1.0
+  },
+  {
+   "weather_source": "open-meteo",
+   "auc": 0.8053,
+   "accuracy_at_0.5": 0.8447,
+   "mae_delayed": 34.78,
+   "mean_prob": 0.1818,
+   "coverage": 1.0
+  },
+  {
+   "weather_source": "calibrated",
+   "auc": 0.8055,
+   "accuracy_at_0.5": 0.8439,
+   "mae_delayed": 34.7,
+   "mean_prob": 0.185,
+   "coverage": 1.0
+  }
+ ],
+ "calibration": "2026-11-04T19:11:59+00:00"
+}

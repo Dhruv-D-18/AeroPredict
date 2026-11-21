@@ -3,5 +3,8 @@ pandas>=1.5.0
 numpy>=1.22.0
 joblib>=1.1.0
 scikit-learn>=1.1.0
+torch>=2.0.0
 pymongo>=4.3.0
-pyspark>=3.5.0
+# Optional - only for the legacy Spark GBT pipeline (make_gbt_flask_pipeline.py)
+# and the HDFS benchmark. The DNN + Flask app do not need Spark/Hadoop.
+# pyspark>=3.5.0
