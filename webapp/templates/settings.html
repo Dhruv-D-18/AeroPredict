@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Settings — AeroPredict{% endblock %}
+
+{% macro toggle(id, label, hint='', checked=false) -%}
+<div class="pref">
+    <div><label class="pref-label" for="{{ id }}">{{ label }}</label>{% if hint %}<div class="pref-hint">{{ hint }}</div>{% endif %}</div>
+    <div class="pref-control"><span class="switch"><input type="checkbox" id="{{ id }}" {% if checked %}checked{% endif %}><span></span></span></div>
+</div>
+{%- endmacro %}
+
+{% macro select(id, label, options, hint='') -%}
+<div class="pref">
+    <div><label class="pref-label" for="{{ id }}">{{ label }}</label>{% if hint %}<div class="pref-hint">{{ hint }}</div>{% endif %}</div>
+    <div class="pref-control">
+        <span class="select">
+            <select id="{{ id }}">
+                {% for value, text, sel in options %}<option value="{{ value }}" {% if sel %}selected{% endif %}>{{ text }}</option>{% endfor %}
+            </select>
+            {{ icon('chevron-down') }}
+        </span>
+    </div>
+</div>
+{%- endmacro %}
+
+{% macro range(id, label, min, max, step, value, unit, hint='') -%}
+<div class="pref">
+    <div><label class="pref-label" for="{{ id }}">{{ label }}</label>{% if hint %}<div class="pref-hint">{{ hint }}</div>{% endif %}</div>
+    <div class="pref-control pref-range">
+        <input type="range" id="{{ id }}" min="{{ min }}" max="{{ max }}" step="{{ step }}" value="{{ value }}" data-unit="{{ unit }}" data-default="{{ value }}">
+        <output for="{{ id }}" id="{{ id }}-out">{{ value }}{{ unit }}</output>
+    </div>
+</div>
+{%- endmacro %}
+
+{% block content %}
+<div class="page">
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <span class="eyebrow">{{ icon('settings', 'ic-sm') }} Settings</span>
+            <h1 class="page-title">Settings</h1>
+            <p class="page-sub">Service status and display preferences.</p>
+        </div>
+    </div>
+
+    <div class="settings-grid">
+        {# ───── Status ───── #}
+        <div class="settings-stack">
+            <section class="card card-pad">
+                <div class="card-head"><div class="card-title">{{ icon('activity') }} Service status</div></div>
+                <div class="status-list">
+                    <div class="status-row">
+                        <span class="k">{{ icon('radar') }} Delay predictions</span>
+                        <span class="status ok"><span class="dot"></span>Online</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="k">{{ icon('cloud-sun') }} Weather source</span>
+                        <span class="v" style="font-weight:500;">Open-Meteo forecast</span>
+                    </div>
+                    {% if model_info.accuracy is defined %}
+                    <div class="status-row">
+                        <span class="k">{{ icon('circle-check') }} Prediction accuracy</span>
+                        <span class="v">{{ model_info.accuracy }}</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="k">{{ icon('timer') }} Typical delay-estimate error</span>
+                        <span class="v">±{{ model_info.mae }} min</span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <details class="disclosure">
+                    <summary>Model details {{ icon('chevron-down') }}</summary>
+                    <div class="disclosure-body">
+                        <div class="mini" style="grid-column:1/-1;"><div class="k">Active model</div><div class="v">{{ model_info.label }}</div></div>
+                        {% if model_info.accuracy is defined %}
+                        <div class="mini"><div class="k">Test accuracy</div><div class="v">{{ model_info.accuracy }}</div></div>
+                        <div class="mini"><div class="k">AUC-ROC</div><div class="v">{{ model_info.auc }}</div></div>
+                        <div class="mini"><div class="k">Delay MAE</div><div class="v">±{{ model_info.mae }} min</div></div>
+                        {% if model_info.train_rows is defined %}
+                        <div class="mini"><div class="k">Training flights</div><div class="v">{{ "{:,}".format(model_info.train_rows) }}</div></div>
+                        <div class="mini"><div class="k">Parameters</div><div class="v">{{ "{:,}".format(model_info.parameters) }}</div></div>
+                        <div class="mini"><div class="k">Delayed share</div><div class="v">{{ model_info.delayed_pct }}%</div></div>
+                        {% endif %}
+                        {% endif %}
+                        <p class="disclosure-note">The served model is chosen automatically at startup (DNN V2 → DNN V1 → Spark GBT → SVM). Retrain with <code>python training/phase1_dnn/train_dnn_v2.py</code> and restart the app to change it.</p>
+                    </div>
+                </details>
+            </section>
+        </div>
+
+        {# ───── Preferences ───── #}
+        <section class="card card-pad">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">{{ icon('sliders-horizontal') }} Preferences</div>
+                    <div class="card-sub">Saved in this browser.</div>
+                </div>
+            </div>
+
+            <div class="pref-section">
+                <h3>{{ icon('radar') }} Predictions</h3>
+                {{ range('confidence-threshold', 'Confidence threshold', 50, 95, 1, 75, '%') }}
+                {{ range('prediction-horizon', 'Prediction horizon', 6, 72, 6, 24, 'h') }}
+            </div>
+
+            <div class="pref-section">
+                <h3>{{ icon('bell') }} Alerts</h3>
+                {{ toggle('delay-alerts', 'Delay alerts', checked=true) }}
+                {{ toggle('cancellation-alerts', 'Cancellation risk alerts', checked=true) }}
+                {{ toggle('weather-alerts', 'Weather impact alerts') }}
+                {{ select('alert-method', 'Alert method', [('email','Email',true),('sms','SMS',false),('both','Email & SMS',false),('none','None',false)]) }}
+            </div>
+
+            <div class="pref-section">
+                <h3>{{ icon('database') }} Data</h3>
+                {{ select('data-timeframe', 'Historical timeframe', [('1month','Last 1 month',false),('3months','Last 3 months',true),('6months','Last 6 months',false),('1year','Last 1 year',false)]) }}
+                {{ toggle('auto-refresh', 'Auto-refresh predictions', checked=true) }}
+                {{ range('refresh-interval', 'Refresh interval', 5, 60, 5, 15, ' min') }}
+                {{ toggle('export-data', 'Enable data export') }}
+            </div>
+
+            <div class="pref-section">
+                <h3>{{ icon('monitor') }} Display</h3>
+                {{ select('theme', 'Theme', [('light','Light',true),('dark','Dark',false),('auto','Auto (system)',false)]) }}
+                {{ select('language', 'Language', [('en','English',true),('es','Español',false),('fr','Français',false),('de','Deutsch',false)]) }}
+                {{ toggle('detailed-charts', 'Show detailed charts', checked=true) }}
+            </div>
+
+            <div class="settings-actions">
+                <span class="note">{{ icon('info') }} Changes save automatically.</span>
+                <div class="btns">
+                    <button type="button" class="btn btn-ghost btn-sm" id="resetBtn">{{ icon('refresh-ccw') }}Reset to defaults</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="saveBtn">{{ icon('save') }}Save changes</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+</div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">{{ icon('circle-check') }}<span id="toastText"></span></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const ids = ['confidence-threshold', 'prediction-horizon',
+                 'delay-alerts', 'cancellation-alerts', 'weather-alerts', 'alert-method',
+                 'data-timeframe', 'auto-refresh', 'refresh-interval', 'export-data',
+                 'theme', 'language', 'detailed-charts'];
+    const els = ids.map((id) => document.getElementById(id)).filter(Boolean);
+    const defaults = {};
+    els.forEach((el) => { defaults[el.id] = el.type === 'checkbox' ? el.checked : el.value; });
+
+    const store = {
+        get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+        set: (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+        del: (k) => { try { localStorage.removeItem(k); } catch (e) {} },
+    };
+
+    function paintRange(el) {
+        const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+        el.style.setProperty('--pct', pct + '%');
+        const out = document.getElementById(el.id + '-out');
+        if (out) out.textContent = el.value + (el.dataset.unit || '');
+    }
+
+    function load() {
+        els.forEach((el) => {
+            const saved = store.get('setting_' + el.id);
+            if (saved !== null) { if (el.type === 'checkbox') el.checked = saved === 'true'; else el.value = saved; }
+            if (el.type === 'range') paintRange(el);
+        });
+    }
+
+    function save(el) { return store.set('setting_' + el.id, el.type === 'checkbox' ? el.checked : el.value); }
+
+    let tt;
+    function toast(msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toastText').textContent = msg;
+        t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    els.forEach((el) => {
+        el.addEventListener('input', () => { if (el.type === 'range') paintRange(el); });
+        el.addEventListener('change', () => save(el));
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+        const ok = els.every(save);
+        toast(ok ? 'Preferences saved in this browser' : 'Your browser blocked saving preferences');
+    });
+    document.getElementById('resetBtn').addEventListener('click', () => {
+        els.forEach((el) => {
+            store.del('setting_' + el.id);
+            if (el.type === 'checkbox') el.checked = defaults[el.id]; else el.value = defaults[el.id];
+            if (el.type === 'range') paintRange(el);
+        });
+        toast('Preferences reset to defaults');
+    });
+
+    load();
+})();
+</script>
+{% endblock %}

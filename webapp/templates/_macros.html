@@ -1,0 +1,4 @@
+{# Shared UI macros #}
+{% macro icon(name, cls='') -%}
+<svg class="ic {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}

@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Prediction History — AeroPredict{% endblock %}
+
+{% block content %}
+<div class="page">
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <span class="eyebrow">{{ icon('history', 'ic-sm') }} History</span>
+            <h1 class="page-title">Prediction history</h1>
+            <p class="page-sub">Your most recent flight checks.</p>
+        </div>
+        {% if mongo_ok %}
+        <span class="status ok"><span class="dot"></span>History storage connected</span>
+        {% else %}
+        <span class="status off"><span class="dot"></span>History storage offline</span>
+        {% endif %}
+    </div>
+
+    <div class="card" style="overflow:hidden;">
+        {% if records %}
+        <div class="toolbar">
+            <label class="search-input">
+                {{ icon('search') }}
+                <span class="sr-only">Search history</span>
+                <input type="search" id="historySearch" placeholder="Search airport, route or airline">
+            </label>
+            <div class="segmented" role="group" aria-label="Filter by risk">
+                <button type="button" class="active" data-risk="all">All</button>
+                <button type="button" data-risk="low"><span class="dot" style="color:var(--success)"></span>Low</button>
+                <button type="button" data-risk="medium"><span class="dot" style="color:var(--warning)"></span>Medium</button>
+                <button type="button" data-risk="high"><span class="dot" style="color:var(--danger)"></span>High</button>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Route</th>
+                        <th>Airline</th>
+                        <th>Flight date</th>
+                        <th>Departure</th>
+                        <th>Delay risk</th>
+                        <th>Chance of delay</th>
+                        <th>Est. delay</th>
+                        <th>Checked</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    {% for r in records %}
+                    {% set risk = r.get('risk', 'low') %}
+                    {% set dep = r.get('dep_airport') %}
+                    {% set arr = r.get('arr_airport') %}
+                    {% set route = r.get('route', '—') %}
+                    <tr data-risk="{{ risk }}" data-search="{{ (route ~ ' ' ~ (dep or '') ~ ' ' ~ (arr or '') ~ ' ' ~ r.get('airline', ''))|lower }}">
+                        <td>
+                            {% if dep and arr %}
+                            <span class="t-route">{{ dep }} {{ icon('plane') }} {{ arr }}</span>
+                            {% else %}
+                            <span class="t-route">{{ route }}</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="t-strong" style="font-weight:500;">{{ r.get('airline', '—') }}</span></td>
+                        <td class="js-date" data-date="{{ r.get('travel_date', '') }}">{{ r.get('travel_date', '—') }}</td>
+                        <td>{{ r.get('dep_time', '—') }}</td>
+                        <td>
+                            <span class="chip chip-{{ risk }}"><span class="dot"></span>
+                                {% if risk == 'high' %}High{% elif risk == 'medium' %}Medium{% else %}Low{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {% set p = r.get('delay_prob') %}
+                            {% if p is not none %}
+                            <div class="prob prob-{{ risk }}"><span>{{ p }}%</span><div class="prob-bar"><i style="width:{{ [p, 100]|min }}%"></i></div></div>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% set m = r.get('est_delay_mins') %}
+                            {% if m is not none %}<span class="t-strong">~{{ m }} min</span>{% else %}<span class="t-sub">—</span>{% endif %}
+                        </td>
+                        <td class="t-sub">
+                            {% set ts = r.get('timestamp') %}
+                            {% if ts and ts.strftime is defined %}{{ ts.strftime('%d %b %Y, %H:%M') }} UTC{% else %}{{ ts or '—' }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="no-match" id="noMatch"><td colspan="8" class="t-sub" style="text-align:center;padding:28px;">No predictions match your filters.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="table-foot">
+            <span id="historyCount">Showing {{ records|length }} of {{ records|length }} most recent predictions</span>
+            <a href="/predict-page" class="btn btn-secondary btn-sm">{{ icon('plane-takeoff') }}New prediction</a>
+        </div>
+        {% else %}
+        <div class="empty">
+            <span class="icon-tile">{{ icon('inbox') }}</span>
+            {% if mongo_ok %}
+            <h3>No predictions yet</h3>
+            <p>Flights you check will be listed here.</p>
+            {% else %}
+            <h3>History is unavailable</h3>
+            <p>Start MongoDB on port 27017 and restart the app to keep a record of your predictions.</p>
+            {% endif %}
+            <a href="/predict-page" class="btn btn-primary btn-sm" style="margin-top:8px;">{{ icon('plane-takeoff') }}Check a flight</a>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    // Friendly flight dates
+    document.querySelectorAll('.js-date').forEach((td) => {
+        const d = new Date(td.dataset.date + 'T00:00:00');
+        if (td.dataset.date && !isNaN(d)) td.textContent = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    });
+
+    const body = document.getElementById('historyBody');
+    if (!body) return;
+    const rows = [...body.querySelectorAll('tr[data-risk]')];
+    const search = document.getElementById('historySearch');
+    const count = document.getElementById('historyCount');
+    let risk = 'all';
+
+    function apply() {
+        const q = search.value.trim().toLowerCase();
+        let shown = 0;
+        rows.forEach((tr) => {
+            const ok = (risk === 'all' || tr.dataset.risk === risk) && (!q || tr.dataset.search.includes(q));
+            tr.style.display = ok ? '' : 'none';
+            if (ok) shown++;
+        });
+        document.getElementById('noMatch').style.display = shown ? 'none' : 'table-row';
+        count.textContent = `Showing ${shown} of ${rows.length} most recent predictions`;
+    }
+    search.addEventListener('input', apply);
+    document.querySelectorAll('.segmented button').forEach((b) => b.addEventListener('click', () => {
+        document.querySelectorAll('.segmented button').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active'); risk = b.dataset.risk; apply();
+    }));
+})();
+</script>
+{% endblock %}

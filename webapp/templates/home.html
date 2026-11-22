@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}AeroPredict — Flight delay intelligence{% endblock %}
+
+{% block head %}
+<script type="importmap">
+{ "imports": {
+    "three": "{{ url_for('static', filename='vendor/three/three.module.min.js') }}",
+    "three/addons/environments/RoomEnvironment.js": "{{ url_for('static', filename='vendor/three/RoomEnvironment.js') }}"
+} }
+</script>
+<link rel="modulepreload" href="{{ url_for('static', filename='vendor/three/three.module.min.js') }}">
+{% endblock %}
+
+{% block content %}
+<section class="hero" id="hero">
+    <div class="hero-map" aria-hidden="true"></div>
+    <div class="hero-canvas" id="heroCanvas" aria-hidden="true"></div>
+
+    {# Shown only when WebGL is unavailable #}
+    <div class="hero-fallback" aria-hidden="true">
+        <svg viewBox="0 0 720 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="fb-body" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E3EAF1"/>
+                </linearGradient>
+            </defs>
+            <path d="M40 262 H680" stroke="#E3EBF3" stroke-width="22" stroke-linecap="round"/>
+            <path d="M80 262 H640" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="26 22"/>
+            <ellipse cx="360" cy="246" rx="250" ry="8" fill="#12304A" opacity=".06"/>
+            <path d="M118 152 L78 78 H112 L176 140 Z" fill="#12304A"/>
+            <path d="M96 104 L118 98 L150 132 L132 140 Z" fill="#1769AA"/>
+            <path d="M120 150 C150 136 520 128 610 136 C650 140 676 152 680 160 C676 170 650 178 610 180 L170 182 C140 180 120 168 120 150 Z" fill="url(#fb-body)" stroke="#D3DFEA"/>
+            <path d="M200 168 H600" stroke="#12304A" stroke-width="4"/>
+            <path d="M206 174 H580" stroke="#1769AA" stroke-width="1.6"/>
+            <g fill="#1E3347">{% for i in range(26) %}<rect x="{{ 230 + i*13.5 }}" y="150" width="6" height="9" rx="3"/>{% endfor %}</g>
+            <path d="M640 150 L656 150 L662 158 L644 158 Z" fill="#1A2B3C"/>
+            <path d="M330 176 L250 236 H286 L420 178 Z" fill="#CFD9E3" stroke="#B9C7D4"/>
+            <rect x="300" y="190" width="70" height="26" rx="13" fill="#F2F5F8" stroke="#C3CCD5"/>
+            <ellipse cx="369" cy="203" rx="5" ry="12" fill="#1A2632"/>
+            <path d="M140 154 L96 132 H118 L170 152 Z" fill="#CFD9E3"/>
+        </svg>
+    </div>
+
+    <div class="container hero-content">
+        <div class="hero-copy">
+            <span class="hero-tag">
+                <span class="pill">LIVE WEATHER</span>
+                15-day airport forecasts built in
+            </span>
+            <h1 class="hero-title">Every flight.<br><span>Smarter decisions.</span></h1>
+            <p class="hero-lead">Check the delay risk of any US domestic route before you fly — in seconds.</p>
+            <div class="hero-actions">
+                <a href="/predict-page" class="btn btn-primary btn-lg">{{ icon('plane-takeoff') }}Predict a Flight</a>
+                <a href="/visualizations" class="btn btn-secondary btn-lg">{{ icon('chart-column') }}Explore Analytics</a>
+            </div>
+        </div>
+    </div>
+
+    <a href="#overview" class="hero-scroll" aria-label="Scroll to overview">{{ icon('chevron-down', 'ic-lg') }}</a>
+</section>
+
+<section class="overview" id="overview">
+    <div class="container">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Network overview</h2>
+                <p class="section-sub">Built from the full 2023 US domestic flight record.</p>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="card kpi reveal">
+                <span class="icon-tile">{{ icon('plane') }}</span>
+                <div>
+                    <div class="kpi-label">Flights analysed</div>
+                    <div class="kpi-value">
+                        {% if stats.total_flights >= 1000000 %}{{ "%.2f"|format(stats.total_flights / 1000000) }}<small>million</small>
+                        {% else %}{{ "{:,}".format(stats.total_flights) }}{% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="card kpi reveal">
+                <span class="icon-tile">{{ icon('map-pin') }}</span>
+                <div>
+                    <div class="kpi-label">Airports covered</div>
+                    <div class="kpi-value">{{ stats.airports }}</div>
+                </div>
+            </div>
+            <div class="card kpi reveal">
+                <span class="icon-tile">{{ icon('building-2') }}</span>
+                <div>
+                    <div class="kpi-label">Airlines compared</div>
+                    <div class="kpi-value">{{ stats.airlines }}</div>
+                </div>
+            </div>
+            <div class="card kpi reveal">
+                <span class="icon-tile">{{ icon('timer') }}</span>
+                <div>
+                    {% if stats.delayed_pct is defined %}
+                    <div class="kpi-label">Flights delayed 15+ min</div>
+                    <div class="kpi-value">{{ stats.delayed_pct }}<small>%</small></div>
+                    {% else %}
+                    <div class="kpi-label">Average delay</div>
+                    <div class="kpi-value">{{ stats.avg_delay }}<small>min</small></div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="shortcut-grid">
+            <a href="/predict-page" class="card shortcut reveal">
+                <span class="icon-tile">{{ icon('search') }}</span>
+                <div><h3>Check a flight</h3><p>Delay risk and estimated minutes</p></div>
+                <span class="go">{{ icon('arrow-right') }}</span>
+            </a>
+            <a href="/visualizations" class="card shortcut reveal">
+                <span class="icon-tile">{{ icon('chart-line') }}</span>
+                <div><h3>Delay patterns</h3><p>Seasons, airports, airlines, weather</p></div>
+                <span class="go">{{ icon('arrow-right') }}</span>
+            </a>
+            <a href="/network" class="card shortcut reveal">
+                <span class="icon-tile">{{ icon('globe') }}</span>
+                <div><h3>Network early warning</h3><p>Airport disruption forecasts &amp; what-if</p></div>
+                <span class="go">{{ icon('arrow-right') }}</span>
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // If the 3D module fails to load (very old browser, blocked script), show the illustration.
+    setTimeout(() => {
+        const h = document.getElementById('hero');
+        if (h && !h.classList.contains('webgl-ready')) h.classList.add('no-webgl');
+    }, 5000);
+</script>
+<script type="module" src="{{ url_for('static', filename='js/hero3d.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Flight Prediction — AeroPredict{% endblock %}
+
+{% block content %}
+<div class="page">
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <span class="eyebrow">{{ icon('plane-takeoff', 'ic-sm') }} Flight prediction</span>
+            <h1 class="page-title">Where are you flying?</h1>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert" role="alert" style="margin-bottom:16px;">{{ icon('circle-alert') }}<span>{{ error }}</span></div>
+    {% endif %}
+
+    <form method="POST" action="/predict" class="prediction-form" id="predictForm" autocomplete="off">
+        <div class="card search-card">
+            <div class="search-tabs">
+                <span class="search-tab">{{ icon('route', 'ic-sm') }} One-way · US domestic</span>
+                <span class="search-hint">{{ icon('cloud-sun', 'ic-sm') }} Weather and route details fill in automatically</span>
+            </div>
+
+            <div class="route-row">
+                <div class="airport-field" onclick="document.getElementById('dep_airport').focus()">
+                    <label for="dep_airport">{{ icon('plane-takeoff') }} From</label>
+                    <input type="text" id="dep_airport" name="dep_airport"
+                           list="airports-list"
+                           placeholder="ORD"
+                           value="{{ form_values.dep_airport if form_values else '' }}"
+                           maxlength="4" required spellcheck="false" autocapitalize="characters">
+                    <datalist id="airports-list"></datalist>
+                    <span class="meta" id="dep_meta">Departure airport code</span>
+                </div>
+
+                <div class="swap-wrap">
+                    <button type="button" class="swap-btn" id="swapBtn" aria-label="Swap departure and arrival airports" title="Swap airports">
+                        {{ icon('arrow-left-right') }}
+                    </button>
+                </div>
+
+                <div class="airport-field" onclick="document.getElementById('arr_airport').focus()">
+                    <label for="arr_airport">{{ icon('plane-landing') }} To</label>
+                    <input type="text" id="arr_airport" name="arr_airport"
+                           list="airports-list"
+                           placeholder="JFK"
+                           value="{{ form_values.arr_airport if form_values else '' }}"
+                           maxlength="4" required spellcheck="false" autocapitalize="characters">
+                    <span class="meta" id="arr_meta">Arrival airport code</span>
+                </div>
+            </div>
+
+            <div class="detail-row">
+                <div class="field">
+                    <label for="travel_date">{{ icon('calendar') }} Departure date</label>
+                    <input type="date" id="travel_date" name="travel_date"
+                           value="{{ form_values.travel_date if form_values else '' }}" required>
+                </div>
+
+                <div class="field">
+                    <label for="dep_time">{{ icon('clock') }} Departure time</label>
+                    <select id="dep_time" name="dep_time">
+                        {% for slot, label in [('Morning','Morning · 6am–12pm'),('Afternoon','Afternoon · 12pm–6pm'),('Evening','Evening · 6pm–10pm'),('Night','Night · 10pm–6am')] %}
+                        <option value="{{ slot }}" {% if form_values and form_values.dep_time == slot %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    {{ icon('chevron-down', 'caret') }}
+                </div>
+
+                <div class="field field-airline">
+                    <label for="airline_key">{{ icon('plane') }} Airline</label>
+                    <select id="airline_key" name="airline_key" required>
+                        <option value="">Select airline</option>
+                        {% for key, display in airlines.items() %}
+                        <option value="{{ key }}" {% if form_values and form_values.airline_key == key %}selected{% endif %}>{{ display }}</option>
+                        {% endfor %}
+                    </select>
+                    {{ icon('chevron-down', 'caret') }}
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg submit-btn" id="submitBtn">
+                    {{ icon('search') }}<span>Check delay risk</span>
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <div class="predict-layout">
+        {# ───────── Result ───────── #}
+        <div>
+        {% if prediction %}
+            {% set rp = prediction.route.split(' → ') %}
+            {% set titles = {'low': 'Likely on time', 'medium': 'Possible delay', 'high': 'Delay likely'} %}
+            {% set icons  = {'low': 'circle-check', 'medium': 'triangle-alert', 'high': 'circle-alert'} %}
+            <article class="card result risk-{{ prediction.risk }}" id="result" aria-live="polite">
+                <div class="result-top">
+                    <div class="result-meta">
+                        <span class="result-airline"><span class="icon-tile" style="width:32px;height:32px;">{{ icon('plane', 'ic-sm') }}</span>{{ prediction.airline_display }}</span>
+                        <span class="chip chip-{{ prediction.risk }}"><span class="dot"></span>{{ prediction.verdict }}</span>
+                    </div>
+
+                    <div class="result-route">
+                        <div class="result-code-wrap">
+                            <div class="result-code">{{ rp[0] }}</div>
+                            <div class="result-code-label">Departure</div>
+                        </div>
+                        <div class="route-line"><span class="plane">{{ icon('plane') }}</span><span class="end"></span></div>
+                        <div class="result-code-wrap">
+                            <div class="result-code">{{ rp[1] if rp|length > 1 else '' }}</div>
+                            <div class="result-code-label">Arrival</div>
+                        </div>
+                    </div>
+
+                    <div class="result-facts">
+                        <span>{{ icon('calendar') }}<span id="resultDate" data-date="{{ prediction.date_display }}">{{ prediction.date_display }}</span></span>
+                        <span>{{ icon('clock') }}{{ prediction.dep_time }}</span>
+                        {% if autofill %}<span>{{ icon('timer') }}~{{ autofill.flight_duration }} min flight</span>{% endif %}
+                    </div>
+                </div>
+
+                <div class="perforation" aria-hidden="true"></div>
+
+                <div class="result-body">
+                    <div class="verdict">
+                        <div>
+                            <div class="verdict-label">Delay outlook</div>
+                            <div class="verdict-title tone">{{ icon(icons[prediction.risk]) }}{{ titles[prediction.risk] }}</div>
+                        </div>
+                        <div class="verdict-prob">
+                            <div class="verdict-label">Chance of 15+ min delay</div>
+                            <div class="num tone">{{ prediction.delay_prob }}<small>%</small></div>
+                        </div>
+                    </div>
+
+                    <div class="risk-meter tone" aria-hidden="true">
+                        <div class="risk-track">
+                            <div class="risk-fill" data-target="{{ [prediction.delay_prob, 100]|min }}"></div>
+                            <div class="risk-thumb" data-target="{{ [prediction.delay_prob, 100]|min }}"></div>
+                        </div>
+                        <div class="risk-scale">
+                            <span style="left:0">Low</span>
+                            <span style="left:25%"><span class="lbl-long">Medium · </span>25%</span>
+                            <span style="left:40%"><span class="lbl-long">High · </span>40%</span>
+                            <span style="left:100%">100%</span>
+                        </div>
+                    </div>
+
+                    <div class="result-stats">
+                        <div class="stat-box">
+                            <div class="lbl">{{ icon('circle-check') }} On-time probability</div>
+                            <div class="val">{{ prediction.on_time_prob }}<small>%</small></div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="lbl">{{ icon('timer') }} Estimated delay</div>
+                            {% if prediction.est_delay_mins is not none %}
+                            <div class="val">~{{ prediction.est_delay_mins }}<small> min</small></div>
+                            {% else %}
+                            <div class="val" style="color:var(--text-2);font-size:15px;padding-top:4px;">Not expected</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <p class="summary">
+                        {{ icon('info') }}
+                        <span>
+                        {% if prediction.risk == 'high' %}
+                            Significant delay risk based on historical patterns for this route, airline and season.
+                        {% elif prediction.risk == 'medium' %}
+                            Some stress factors detected. Check your flight status closer to departure.
+                        {% else %}
+                            Historical data for this route, airline and time of year suggests a low chance of delay.
+                        {% endif %}
+                        </span>
+                    </p>
+
+                    <details class="result-details">
+                        <summary>About this estimate {{ icon('chevron-down') }}</summary>
+                        <p>
+                            Weather source: {{ prediction.weather_source }}.
+                            {% if prediction.est_delay_mins is not none %}Estimated minutes assume the flight is delayed.{% endif %}
+                            Prediction engine: {{ prediction.model_used }}.
+                        </p>
+                    </details>
+                </div>
+            </article>
+
+            <article class="card card-pad whatif" id="whatifCard"
+                     data-airline="{{ form_values.airline_key if form_values else '' }}"
+                     data-dep="{{ form_values.dep_airport if form_values else '' }}"
+                     data-arr="{{ form_values.arr_airport if form_values else '' }}"
+                     data-date="{{ form_values.travel_date if form_values else '' }}"
+                     data-slot="{{ prediction.dep_time }}">
+                <div class="card-head" style="margin-bottom:4px;">
+                    <div>
+                        <div class="card-title">{{ icon('sliders-horizontal') }} What if you fly at a different time?</div>
+                        <div class="card-sub">Same flight, every departure slot — re-scored by the deep learning model</div>
+                    </div>
+                </div>
+                <div class="slot-bars" id="slotBars"><div class="t-sub">Loading…</div></div>
+                <label class="whatif-rain">{{ icon('droplets') }} Extra rain at departure
+                    <input type="range" id="whatifRain" min="0" max="40" step="5" value="0">
+                    <output id="whatifRainOut">0 mm</output>
+                </label>
+            </article>
+        {% else %}
+            <div class="card empty">
+                <svg class="route-art" viewBox="0 0 320 44" fill="none" aria-hidden="true">
+                    <circle cx="10" cy="30" r="5" fill="#1769AA"/>
+                    <path d="M14 30 C90 -6 230 -6 306 30" stroke="#D3DFEA" stroke-width="1.6" stroke-dasharray="5 6"/>
+                    <circle cx="310" cy="30" r="5" fill="#1769AA"/>
+                    <text x="0" y="44" font-size="9" font-weight="600" fill="#9AA8B8" font-family="Inter">FROM</text>
+                    <text x="298" y="44" font-size="9" font-weight="600" fill="#9AA8B8" font-family="Inter">TO</text>
+                </svg>
+                <h3>Your delay outlook will appear here</h3>
+                <p>Enter a route, date and airline, then check the delay risk.</p>
+            </div>
+        {% endif %}
+        </div>
+
+        {# ───────── Conditions (auto-filled) ───────── #}
+        <aside class="card card-pad cond-wrap" id="condCard">
+            <div class="card-head" style="margin-bottom:10px;">
+                <div class="card-title">{{ icon('cloud-sun') }} Flight conditions</div>
+            </div>
+
+            <div id="condEmpty" class="cond-placeholder" style="display:{% if autofill %}none{% else %}flex{% endif %};">
+                {{ icon('map-pin') }}
+                <span>Add both airports and a date to see departure weather and route details.</span>
+            </div>
+
+            <div id="autofillPanel" style="display:{% if autofill %}block{% else %}none{% endif %};">
+                <div class="cond-source">
+                    <span class="chip" id="afBadge">{{ icon('cloud-sun') }}<span id="afSource">{% if autofill and autofill.weather_source %}{{ autofill.weather_source }}{% else %}Auto-filled{% endif %}</span></span>
+                </div>
+                <div class="cond-list">
+                    <div class="cond"><svg class="ic"><use href="#i-thermometer"/></svg><div><div class="cond-lbl">Temperature</div><div class="cond-val" id="af_temp">{{ (autofill.tavg|string + '°C') if autofill else '' }}</div></div></div>
+                    <div class="cond"><svg class="ic"><use href="#i-droplets"/></svg><div><div class="cond-lbl">Precipitation</div><div class="cond-val" id="af_prcp">{{ (autofill.prcp|string + ' mm') if autofill else '' }}</div></div></div>
+                    <div class="cond"><svg class="ic"><use href="#i-wind"/></svg><div><div class="cond-lbl">Wind speed</div><div class="cond-val" id="af_wspd">{{ (autofill.wspd|string + ' km/h') if autofill else '' }}</div></div></div>
+                    <div class="cond"><svg class="ic"><use href="#i-gauge"/></svg><div><div class="cond-lbl">Air pressure</div><div class="cond-val" id="af_pres">{{ (autofill.pres|string + ' hPa') if autofill else '' }}</div></div></div>
+                    <div class="cond"><svg class="ic"><use href="#i-calendar-days"/></svg><div><div class="cond-lbl">Day of week</div><div class="cond-val" id="af_day">{{ autofill.day_of_week if autofill else '' }}</div></div></div>
+                    <div class="cond"><svg class="ic"><use href="#i-calendar"/></svg><div><div class="cond-lbl">Weekend flight</div><div class="cond-val" id="af_weekend">{{ autofill.is_weekend if autofill else '' }}</div></div></div>
+                    <div class="cond"><svg class="ic"><use href="#i-timer"/></svg><div><div class="cond-lbl">Typical duration</div><div class="cond-val" id="af_dur">{{ (autofill.flight_duration|string + ' mins') if autofill else '' }}</div></div></div>
+                    <div class="cond"><svg class="ic"><use href="#i-route"/></svg><div><div class="cond-lbl">Route type</div><div class="cond-val" id="af_route">{{ autofill.route_type if autofill else '' }}</div></div></div>
+                    <div class="cond wide"><svg class="ic"><use href="#i-plane"/></svg><div><div class="cond-lbl">Aircraft age</div><div class="cond-val" id="af_age">12 years (fleet median)</div></div></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const dep = $('dep_airport'), arr = $('arr_airport');
+    let airports = new Set();
+
+    // Load airports into datalist
+    fetch('/api/airports').then(r => r.json()).then(list => {
+        const dl = $('airports-list');
+        list.forEach(a => { const opt = document.createElement('option'); opt.value = a; dl.appendChild(opt); });
+        airports = new Set(list);
+        updateMeta();
+    }).catch(() => {});
+
+    function updateMeta() {
+        [[dep, 'dep_meta', 'Departure airport code'], [arr, 'arr_meta', 'Arrival airport code']].forEach(([el, id, fallback]) => {
+            const code = el.value.trim().toUpperCase();
+            const meta = $(id);
+            if (code.length >= 3 && airports.size && !airports.has(code)) { meta.textContent = 'Not in our airport list'; meta.classList.remove('has-city'); }
+            else if (code.length >= 3 && airports.has(code)) { meta.textContent = 'Airport recognised'; meta.classList.add('has-city'); }
+            else { meta.textContent = fallback; meta.classList.remove('has-city'); }
+        });
+    }
+
+    // Uppercase airport codes as the user types
+    [dep, arr].forEach(el => el.addEventListener('input', () => {
+        const p = el.selectionStart; el.value = el.value.toUpperCase(); el.setSelectionRange(p, p); updateMeta();
+    }));
+
+    // Swap airports
+    $('swapBtn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        [dep.value, arr.value] = [arr.value, dep.value];
+        const b = e.currentTarget; b.classList.toggle('spin-once');
+        updateMeta(); scheduleAutofill();
+    });
+
+    // Auto-fill on input change
+    let afTimer = null;
+    function scheduleAutofill() { clearTimeout(afTimer); afTimer = setTimeout(fetchAutofill, 600); }
+
+    async function fetchAutofill() {
+        const d    = dep.value.trim().toUpperCase();
+        const a    = arr.value.trim().toUpperCase();
+        const dt   = $('travel_date').value;
+        const time = $('dep_time').value;
+        if (d.length < 3 || a.length < 3 || !dt) return;
+
+        $('condCard').classList.add('loading');
+        try {
+            const r = await fetch(`/api/autofill?dep=${encodeURIComponent(d)}&arr=${encodeURIComponent(a)}&date=${encodeURIComponent(dt)}&dep_time=${encodeURIComponent(time)}`);
+            const x = await r.json();
+            $('af_day').textContent     = x.day_of_week;
+            $('af_weekend').textContent = x.is_weekend;
+            $('af_dur').textContent     = x.flight_duration + ' mins';
+            $('af_route').textContent   = x.route_type;
+            $('af_temp').textContent    = x.tavg + '°C';
+            $('af_prcp').textContent    = x.prcp + ' mm';
+            $('af_wspd').textContent    = x.wspd + ' km/h';
+            $('af_pres').textContent    = x.pres + ' hPa';
+            $('afSource').textContent   = x.weather_source;
+            $('autofillPanel').style.display = 'block';
+            $('condEmpty').style.display = 'none';
+        } catch (e) { console.warn('Autofill error:', e); }
+        finally { $('condCard').classList.remove('loading'); }
+    }
+
+    ['dep_airport', 'arr_airport', 'travel_date', 'dep_time'].forEach(id => {
+        const el = $(id);
+        if (el) { el.addEventListener('change', scheduleAutofill); el.addEventListener('input', scheduleAutofill); }
+    });
+
+    // Submit: loading state (native validation still runs first)
+    $('predictForm').addEventListener('submit', () => {
+        const b = $('submitBtn');
+        b.classList.add('is-loading');
+        b.querySelector('use').setAttribute('href', '#i-loader-circle');
+        b.querySelector('svg').classList.add('spin');
+        b.querySelector('span').textContent = 'Checking…';
+    });
+    window.addEventListener('pageshow', () => {   // restore button after back-navigation
+        const b = $('submitBtn'); b.classList.remove('is-loading');
+        b.querySelector('use').setAttribute('href', '#i-search');
+        b.querySelector('svg').classList.remove('spin');
+        b.querySelector('span').textContent = 'Check delay risk';
+    });
+
+    // Friendly date on the result card
+    const rd = $('resultDate');
+    if (rd) {
+        const d = new Date(rd.dataset.date + 'T00:00:00');
+        if (!isNaN(d)) rd.textContent = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    // Flight what-if: delay probability for each departure slot (DNN V2)
+    const wi = $('whatifCard');
+    if (wi) {
+        const rain = $('whatifRain');
+        let wt = null;
+        async function loadWhatIf() {
+            rain.style.setProperty('--pct', (100 * rain.value / rain.max) + '%');
+            $('whatifRainOut').textContent = rain.value + ' mm';
+            try {
+                const r = await fetch('/api/whatif/flight', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ airline_key: wi.dataset.airline, dep_airport: wi.dataset.dep, arr_airport: wi.dataset.arr,
+                                           travel_date: wi.dataset.date, extra_rain_mm: +rain.value }) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error);
+                const best = Math.min(...d.slots.map(s => s.delay_prob));
+                const max = Math.max(60, ...d.slots.map(s => s.delay_prob));
+                $('slotBars').innerHTML = d.slots.map(s => `
+                    <div class="slot-bar${s.slot === wi.dataset.slot ? ' current' : ''}${s.delay_prob === best ? ' best' : ''}">
+                        <div class="sb-track"><div class="sb-fill" style="height:${Math.max(4, 70 * s.delay_prob / max)}px;
+                            background:${s.delay_prob >= 40 ? 'var(--danger)' : s.delay_prob >= 25 ? 'var(--warning)' : 'var(--success)'}"></div></div>
+                        <div class="sb-val">${s.delay_prob}%</div>
+                        <div class="sb-lbl">${s.slot}${s.slot === wi.dataset.slot ? ' · yours' : ''}</div>
+                    </div>`).join('');
+            } catch (e) { $('slotBars').innerHTML = `<div class="t-sub">${e.message}</div>`; }
+        }
+        rain.addEventListener('input', () => { clearTimeout(wt); wt = setTimeout(loadWhatIf, 250); });
+        loadWhatIf();
+    }
+
+    // Animate risk meter
+    requestAnimationFrame(() => setTimeout(() => {
+        document.querySelectorAll('.risk-fill').forEach(el => el.style.width = el.dataset.target + '%');
+        document.querySelectorAll('.risk-thumb').forEach(el => el.style.left = el.dataset.target + '%');
+    }, 120));
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Network — AeroPredict 2.0{% endblock %}
+
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <span class="eyebrow">{{ icon('globe', 'ic-sm') }} Network · AeroPredict 2.0</span>
+            <h1 class="page-title">Airport disruption early warning</h1>
+            <p class="page-sub" id="netSub">Spatio-temporal graph neural network over {{ stats.airports }} airports and their routes.</p>
+        </div>
+        <span class="viz-status" id="netStatus">{% if network_ready %}{{ icon('loader-circle', 'spin') }} Loading network…{% endif %}</span>
+    </div>
+
+{% if not network_ready %}
+    {% if network_error and ('torch' in network_error.lower() or 'pytorch' in network_error.lower()) %}
+    <div class="card empty">
+        <span class="icon-tile">{{ icon('triangle-alert') }}</span>
+        <h3>PyTorch is not working, so the trained models cannot be loaded</h3>
+        <p>The model files are in <code>models/</code>. Reinstall PyTorch in this environment, then restart the app:</p>
+        <pre class="code-block">pip uninstall -y torch
+pip cache purge
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+python -c "import torch; print(torch.__version__)"
+python run_app.py</pre>
+        <p class="t-sub">{{ network_error }}</p>
+    </div>
+    {% else %}
+    <div class="card empty">
+        <span class="icon-tile">{{ icon('server') }}</span>
+        <h3>The network model has not been trained yet</h3>
+        <p>Run these from the project folder, then restart the app:</p>
+        <pre class="code-block">python training/phase2_st_gnn/build_graph.py
+python training/phase2_st_gnn/train_spatiotemporal.py --model stgnn_gcn
+python training/phase2_st_gnn/propagation_analysis.py
+python evaluation/run_ablation.py</pre>
+        {% if network_error %}<p class="t-sub">{{ network_error }}</p>{% endif %}
+    </div>
+    {% endif %}
+{% else %}
+
+    <!-- Controls -->
+    <div class="card net-controls">
+        <div class="field">
+            <label for="netDay">{{ icon('calendar') }} Forecast issued on</label>
+            <input type="date" id="netDay">
+        </div>
+        <div class="field">
+            <label for="netSlot">{{ icon('clock') }} After slot</label>
+            <select id="netSlot">
+                <option>Morning</option><option>Afternoon</option><option selected>Evening</option><option>Night</option>
+            </select>
+            {{ icon('chevron-down', 'caret') }}
+        </div>
+        <div class="horizon">
+            <span class="horizon-label">Horizon</span>
+            <div class="segmented" id="horizonSeg" role="group" aria-label="Forecast horizon">
+                <button type="button" class="active" data-h="0">+1 slot</button>
+                <button type="button" data-h="1">+2 slots</button>
+                <button type="button" data-h="2">+3 slots</button>
+            </div>
+            <span class="horizon-target" id="horizonTarget"></span>
+        </div>
+        <button class="btn btn-primary" id="runForecast">{{ icon('radar') }}Run forecast</button>
+    </div>
+
+    <div class="viz-grid">
+        <!-- Map -->
+        <article class="card chart-card visible span-8">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">{{ icon('map') }} <span id="mapTitle">Forecast delay rate</span></div>
+                    <div class="card-sub" id="mapSub">Share of departures expected to arrive 15+ min late · size = traffic</div>
+                </div>
+                <span class="chip chip-muted" id="mapMode" style="display:none">Scenario Δ</span>
+            </div>
+            <div id="netMap" class="chart-shell" style="height:430px"><div class="skeleton"></div></div>
+            <div class="legend-row">
+                <span><i class="lg" style="background:#DCEBF7"></i>Low &lt;25%</span>
+                <span><i class="lg" style="background:#E2A53B"></i>Medium 25–40%</span>
+                <span><i class="lg" style="background:#C2493F"></i>High ≥40%</span>
+                <span class="t-sub">Lines: busiest routes</span>
+            </div>
+        </article>
+
+        <!-- Warnings -->
+        <article class="card chart-card visible span-4">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">{{ icon('triangle-alert') }} Bottleneck warnings</div>
+                    <div class="card-sub" id="warnSub">Busiest airports ranked by forecast</div>
+                </div>
+            </div>
+            <ol class="warn-list" id="warnList"></ol>
+        </article>
+
+        <!-- What-if -->
+        <article class="card chart-card visible span-6" id="simCard">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">{{ icon('sliders-horizontal') }} What-if disruption simulator</div>
+                    <div class="card-sub">Inject delays or bad weather at one airport and re-run the network model</div>
+                </div>
+            </div>
+            <div class="sim-grid">
+                <div class="field">
+                    <label for="simAirport">{{ icon('map-pin') }} Airport</label>
+                    <input id="simAirport" list="netAirports" value="ORD" maxlength="4" spellcheck="false">
+                    <datalist id="netAirports"></datalist>
+                </div>
+                <div class="sim-slider"><label for="simDelay">Extra delays <output id="simDelayOut">+25 pp</output></label>
+                    <input type="range" id="simDelay" min="0" max="60" step="5" value="25"></div>
+                <div class="sim-slider"><label for="simRain">Extra rain <output id="simRainOut">0 mm</output></label>
+                    <input type="range" id="simRain" min="0" max="60" step="5" value="0"></div>
+                <div class="sim-slider"><label for="simWind">Extra wind <output id="simWindOut">0 km/h</output></label>
+                    <input type="range" id="simWind" min="0" max="60" step="5" value="0"></div>
+                <div class="sim-slider"><label for="simSlots">Lasting <output id="simSlotsOut">2 slots</output></label>
+                    <input type="range" id="simSlots" min="1" max="4" step="1" value="2"></div>
+                <button class="btn btn-primary" id="runSim">{{ icon('activity') }}Simulate</button>
+            </div>
+            <div id="simResult" class="sim-result"></div>
+        </article>
+
+        <!-- Propagation -->
+        <article class="card chart-card visible span-6">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">{{ icon('route') }} Delay propagation</div>
+                    <div class="card-sub">Where delays at one airport spread next</div>
+                </div>
+                <div class="field field-inline">
+                    <input id="propAirport" list="netAirports" value="ORD" maxlength="4" spellcheck="false" aria-label="Airport">
+                    <button class="btn btn-secondary btn-sm" id="runProp">Show</button>
+                </div>
+            </div>
+            <div class="prop-banner" id="propBanner"></div>
+            <div class="prop-cols">
+                <div>
+                    <h4>Measured in 2023 data</h4>
+                    <p class="t-sub">Correlation of delays here (slot t) with the destination (slot t+1)</p>
+                    <ul class="bar-list" id="propMeasured"></ul>
+                </div>
+                <div>
+                    <h4>ST-GNN footprint</h4>
+                    <p class="t-sub">Extra delay the model forecasts elsewhere if this airport gets +30 pp</p>
+                    <ul class="bar-list" id="propModel"></ul>
+                </div>
+            </div>
+        </article>
+
+        <!-- Model comparison -->
+        <article class="card chart-card visible span-12" id="compareCard">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">{{ icon('chart-column') }} How the models compare</div>
+                    <div class="card-sub" id="compareSub">Same task, same December 2023 test windows</div>
+                </div>
+            </div>
+            <div class="compare-grid">
+                <div class="table-wrap">
+                    <table class="table compact" id="compareTable"></table>
+                    <p class="t-sub" id="compareNote" style="padding:10px 4px 0"></p>
+                </div>
+                <div class="compare-charts">
+                    <div id="compareChart" style="height:290px"></div>
+                    <div id="curveChart" style="height:290px"></div>
+                </div>
+            </div>
+        </article>
+    </div>
+{% endif %}
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if network_ready %}
+<script>
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const C = { primary: "#1769AA", navy: "#12304A", text: "#172B3A", muted: "#718096", grid: "#EDF2F7", line: "#E3EBF3" };
+    const cfg = { displayModeBar: false, responsive: true,
+                  topojsonURL: "{{ url_for('static', filename='vendor/topojson/') }}" };   // bundled map outlines (work offline)
+    const font = { family: "Inter, system-ui, sans-serif", color: C.text, size: 12 };
+    const pct = (v) => v == null ? "—" : (100 * v).toFixed(0) + "%";
+    let META = null, FC = null, SIM = null, H = 0, mode = "forecast";
+
+    async function getJSON(url, opts) {
+        const r = await fetch(url, opts);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.statusText);
+        return d;
+    }
+    function params() { return `day=${$("netDay").value}&slot=${$("netSlot").value}`; }
+
+    // ── map ───────────────────────────────────────────────
+    function drawMap() {
+        document.querySelectorAll("#netMap .skeleton").forEach((el) => el.remove());   // loading placeholder
+        const aps = META.airports;
+        const lat = [], lon = [];
+        META.routes.forEach(([a, b]) => { lat.push(aps[a].lat, aps[b].lat, null); lon.push(aps[a].lon, aps[b].lon, null); });
+        const routes = { type: "scattergeo", mode: "lines", lat, lon, hoverinfo: "skip",
+                         line: { width: 0.6, color: "rgba(23,105,170,0.16)" } };
+        let color, cmin, cmax, scale, text, title;
+        if (mode === "scenario" && SIM) {
+            color = SIM.delta[H]; cmin = 0; cmax = Math.max(2, ...color.map(Math.abs));
+            scale = [[0, "#F3F6FA"], [0.25, "#F6D7B0"], [0.6, "#E2A53B"], [1, "#C2493F"]];
+            text = aps.map((a, i) => `<b>${a.code}</b><br>Scenario change: ${color[i] >= 0 ? "+" : ""}${color[i].toFixed(1)} pp`);
+            title = "Δ pp";
+        } else {
+            color = FC.airports.map((a) => a.mean[H]); cmin = 0; cmax = 0.5;
+            scale = [[0, "#DCEBF7"], [0.4, "#7FB3DD"], [0.5, "#E2A53B"], [0.8, "#C2493F"], [1, "#9E2F28"]];
+            text = FC.airports.map((a) => `<b>${a.code}</b><br>Forecast ${pct(a.mean[H])}  (95%: ${pct(a.lo[H])}–${pct(a.hi[H])})` +
+                `<br>Usual ${pct(a.usual[H])}` + (a.actual[H] != null ? `<br>Observed ${pct(a.actual[H])} of ${a.flights[H]} flights` : ""));
+            title = "Delay rate";
+        }
+        const size = aps.map((a) => 4 + 13 * Math.sqrt(a.flights / 400000));
+        const pts = { type: "scattergeo", mode: "markers", lat: aps.map((a) => a.lat), lon: aps.map((a) => a.lon),
+            text, hovertemplate: "%{text}<extra></extra>",
+            marker: { size, color, cmin, cmax, colorscale: scale, opacity: 0.9, line: { color: "#fff", width: 0.7 },
+                colorbar: { title: { text: title, font: { size: 11, color: C.muted } }, thickness: 8, len: 0.6, outlinewidth: 0,
+                    tickformat: mode === "scenario" ? "" : ".0%", tickfont: { size: 10, color: C.muted } } } };
+        Plotly.react("netMap", [routes, pts], {
+            paper_bgcolor: "rgba(0,0,0,0)", margin: { l: 0, r: 0, t: 0, b: 0 }, font, showlegend: false,
+            geo: { scope: "usa", projection: { type: "albers usa" }, showland: true, landcolor: "#F1F6FB",
+                   subunitcolor: "#D3DFEA", subunitwidth: 0.6, showlakes: true, lakecolor: "#fff", bgcolor: "rgba(0,0,0,0)" },
+            hoverlabel: { bgcolor: "#fff", bordercolor: C.line, font }
+        }, cfg);
+        $("mapMode").style.display = mode === "scenario" ? "" : "none";
+        $("mapTitle").textContent = mode === "scenario" ? `Scenario impact — ${SIM.airport}` : "Forecast delay rate";
+    }
+
+    function drawWarnings() {
+        const w = FC.warnings[H] || [];
+        $("warnSub").textContent = `Forecast for ${FC.targets[H]}`;
+        $("warnList").innerHTML = w.map((x) => `
+            <li class="warn risk-${x.risk}">
+                <span class="warn-code">${x.code}</span>
+                <span class="warn-bar"><i style="width:${Math.min(100, x.mean * 200)}%"></i></span>
+                <span class="warn-val tone">${pct(x.mean)}</span>
+                <span class="warn-ci">${pct(x.lo)}–${pct(x.hi)} · usual ${pct(x.usual)}</span>
+            </li>`).join("") || '<li class="t-sub">No busy airports in this slot.</li>';
+    }
+
+    function setHorizon(h) {
+        H = h;
+        document.querySelectorAll("#horizonSeg button").forEach((b) => b.classList.toggle("active", +b.dataset.h === h));
+        if (FC) { $("horizonTarget").textContent = FC.targets[H]; drawWarnings(); drawMap(); }
+    }
+
+    async function runForecast() {
+        $("netStatus").innerHTML = '<svg class="ic spin"><use href="#i-loader-circle"/></svg> Forecasting…';
+        FC = await getJSON(`/api/network/forecast?${params()}`);
+        mode = "forecast";
+        $("netStatus").innerHTML = `<span class="status ok"><span class="dot"></span>Issued after ${FC.issued_after}</span>`;
+        setHorizon(H);
+    }
+
+    // ── simulator ─────────────────────────────────────────
+    const sl = [["simDelay", "simDelayOut", (v) => `+${v} pp`], ["simRain", "simRainOut", (v) => `${v} mm`],
+                ["simWind", "simWindOut", (v) => `${v} km/h`], ["simSlots", "simSlotsOut", (v) => `${v} slot${v > 1 ? "s" : ""}`]];
+    sl.forEach(([id, out, f]) => {
+        const el = $(id), paint = () => { $(out).textContent = f(el.value); el.style.setProperty("--pct", (100 * (el.value - el.min) / (el.max - el.min)) + "%"); };
+        el.addEventListener("input", paint); paint();
+    });
+
+    async function runSim() {
+        const btn = $("runSim"); btn.classList.add("is-loading");
+        try {
+            SIM = await getJSON(`/api/network/simulate?${params()}`, { method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ airport: $("simAirport").value.toUpperCase(), delay_pp: +$("simDelay").value,
+                    rain_mm: +$("simRain").value, wind_kmh: +$("simWind").value, slots: +$("simSlots").value }) });
+            const s = SIM.self, tot = SIM.network_extra_delayed_flights.reduce((a, b) => a + b, 0);
+            $("simResult").innerHTML = `
+                <div class="sim-self">
+                    ${SIM.targets.map((t, h) => `<div class="stat-box"><div class="lbl">${t}</div>
+                        <div class="val">${pct(s.base[h])} → <span style="color:var(--danger)">${pct(s.scenario[h])}</span></div></div>`).join("")}
+                </div>
+                <p class="summary"><svg class="ic"><use href="#i-info"/></svg><span>At <b>${SIM.airport}</b> the model expects
+                    <b>${SIM.airport_extra_delayed_flights.reduce((a, b) => a + b, 0).toFixed(0)}</b> extra delayed departures over the next 3 slots,
+                    and about <b>${tot.toFixed(0)}</b> more across the rest of the network.</span></p>
+                <h4 class="mini-h">Most affected airports</h4>
+                <ul class="bar-list">${SIM.affected.slice(0, 8).map((a) => {
+                    const m = Math.max(...a.delta_pp);
+                    return `<li><span class="bl-code">${a.code}</span><span class="bl-bar"><i style="width:${Math.min(100, m * 8)}%"></i></span>
+                        <span class="bl-val">+${m.toFixed(1)} pp</span>${a.connected ? '<span class="chip chip-muted">direct route</span>' : ""}</li>`; }).join("")
+                    || '<li class="t-sub">No noticeable knock-on effect.</li>'}</ul>
+                <button class="btn btn-secondary btn-sm" id="showSim">${mode === "scenario" ? "Show forecast" : "Show impact on map"}</button>`;
+            $("showSim").onclick = () => { mode = mode === "scenario" ? "forecast" : "scenario"; drawMap(); $("showSim").textContent = mode === "scenario" ? "Show forecast" : "Show impact on map"; };
+        } catch (e) { $("simResult").innerHTML = `<div class="alert">${e.message}</div>`; }
+        finally { btn.classList.remove("is-loading"); }
+    }
+
+    // ── propagation ───────────────────────────────────────
+    async function runProp() {
+        const code = $("propAirport").value.toUpperCase();
+        try {
+            const d = await getJSON(`/api/network/propagation?airport=${code}&${params()}`);
+            $("propMeasured").innerHTML = d.measured.slice(0, 8).map((r) => `
+                <li><span class="bl-code">${r.to}</span><span class="bl-bar"><i style="width:${Math.max(0, r.spillover) * 150}%"></i></span>
+                <span class="bl-val">r = ${r.spillover.toFixed(2)}</span>${r.uplift_pp != null ? `<span class="t-sub">+${r.uplift_pp.toFixed(1)} pp after disruption</span>` : ""}</li>`).join("")
+                || '<li class="t-sub">Not enough busy routes from this airport.</li>';
+            $("propModel").innerHTML = d.model.slice(0, 8).map((a) => {
+                const m = Math.max(...a.delta_pp);
+                return `<li><span class="bl-code">${a.code}</span><span class="bl-bar"><i style="width:${Math.min(100, m * 8)}%"></i></span>
+                    <span class="bl-val">+${m.toFixed(1)} pp</span>${a.connected ? '<span class="chip chip-muted">direct</span>' : ""}</li>`; }).join("")
+                || '<li class="t-sub">No noticeable effect.</li>';
+        } catch (e) { $("propMeasured").innerHTML = `<li class="t-sub">${e.message}</li>`; $("propModel").innerHTML = ""; }
+    }
+
+    // ── comparison ────────────────────────────────────────
+    async function loadComparison() {
+        try {
+            const d = await getJSON("/api/model-comparison");
+            const R = d.results, best = Math.min(...R.filter((r) => !r.model.includes("*")).map((r) => r.mae));
+            $("compareSub").textContent = `${d.meta.task} · test ${d.meta.test_period}`;
+            $("compareTable").innerHTML = `<thead><tr><th>Model</th><th>Graph</th><th>Temporal</th><th>MAE +1</th><th>MAE +2</th><th>MAE +3</th><th>PR-AUC</th><th>F1</th></tr></thead><tbody>` +
+                R.map((r) => `<tr${r.mae === best ? ' class="best"' : ""}><td class="t-strong">${r.model}</td><td>${r.spatial_graph ? "✓" : "—"}</td><td>${r.temporal}</td>
+                    <td>${r.mae_h1.toFixed(3)}</td><td>${r.mae_h2.toFixed(3)}</td><td>${r.mae_h3.toFixed(3)}</td><td>${r.pr_auc.toFixed(3)}</td><td>${r.f1.toFixed(3)}</td></tr>`).join("") + "</tbody>";
+            $("compareNote").textContent = `${d.meta.note_dnn} Disruption = ${d.meta.disruption_definition}.`;
+            const pal = ["#B8C4D0", "#9AA8B8", "#E2A53B", "#C2493F", "#8CC4EC", "#5FA0D6", "#1769AA", "#12304A"];
+            Plotly.newPlot("compareChart", R.map((r, i) => ({ type: "bar", name: r.model, x: ["+1", "+2", "+3"],
+                y: [r.mae_h1, r.mae_h2, r.mae_h3], marker: { color: pal[i % pal.length] } })), {
+                barmode: "group", paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", font,
+                margin: { l: 44, r: 8, t: 26, b: 20 }, legend: { orientation: "h", y: -0.12, font: { size: 10 } },
+                title: { text: "Forecast error (MAE) by horizon — lower is better", font: { size: 12, color: C.muted }, x: 0 },
+                yaxis: { gridcolor: C.grid, zeroline: false },
+                xaxis: { tickvals: ["+1", "+2", "+3"], ticktext: ["+1 slot", "+2 slots", "+3 slots"] } }, cfg);
+            const curves = d.training_curves || {};
+            Plotly.newPlot("curveChart", Object.entries(curves).map(([k, v], i) => ({ type: "scatter", mode: "lines", name: k,
+                y: v, line: { width: 2, color: ["#8CC4EC", "#5FA0D6", "#1769AA", "#12304A"][i % 4] } })), {
+                paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", font, margin: { l: 44, r: 8, t: 26, b: 40 },
+                title: { text: "Validation MAE per epoch", font: { size: 12, color: C.muted }, x: 0 },
+                yaxis: { gridcolor: C.grid, zeroline: false }, xaxis: { title: { text: "epoch", font: { size: 11, color: C.muted } } },
+                legend: { orientation: "h", y: -0.3, font: { size: 10 } } }, cfg);
+        } catch (e) {
+            $("compareTable").innerHTML = `<tbody><tr><td class="t-sub">${e.message}</td></tr></tbody>`;
+        }
+    }
+
+    async function boot() {
+        try {
+            META = await getJSON("/api/network/meta");
+            $("netSub").textContent = `${META.model} · ${META.airports.length} airports · ${META.n_routes.toLocaleString()} routes · ` +
+                `${(META.parameters || 0).toLocaleString()} parameters`;
+            $("netDay").min = META.days[0]; $("netDay").max = META.days[1];
+            $("netDay").value = META.default.day; $("netSlot").value = META.default.slot;
+            $("netAirports").innerHTML = META.airports.filter((a) => a.flights > 3000).map((a) => `<option value="${a.code}">`).join("");
+            if (META.propagation) {
+                const o = META.propagation.overall;
+                $("propBanner").innerHTML = `<b>${o.routes_analysed.toLocaleString()}</b> routes analysed: airports linked by a route show
+                    <b>${(o.connected_mean_spillover).toFixed(2)}</b> next-slot delay correlation vs <b>${(o.control_mean_spillover).toFixed(2)}</b>
+                    for unconnected pairs at similar distances.`;
+            }
+            await runForecast();
+            runProp(); loadComparison();
+        } catch (e) {
+            $("netStatus").innerHTML = `<span class="status off"><span class="dot"></span>${e.message}</span>`;
+        }
+    }
+
+    document.querySelectorAll("#horizonSeg button").forEach((b) => b.addEventListener("click", () => setHorizon(+b.dataset.h)));
+    $("runForecast").addEventListener("click", runForecast);
+    $("runSim").addEventListener("click", runSim);
+    $("runProp").addEventListener("click", runProp);
+    [$("simAirport"), $("propAirport")].forEach((el) => el.addEventListener("input", () => el.value = el.value.toUpperCase()));
+    boot();
+})();
+</script>
+{% endif %}
+{% endblock %}

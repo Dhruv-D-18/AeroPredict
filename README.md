@@ -2,7 +2,146 @@
 
 AeroPredict is an end-to-end, industrial-grade **Big Data & Artificial Intelligence** application designed to predict flight delays, assess delay risk probabilities, and estimate exact late arrival times (in minutes). Its primary engine is a **multi-task Deep Neural Network (PyTorch)** trained on half of the 6.7M-flight 2023 dataset, with optional **PySpark MLlib GBT** and **Scikit-Learn** fallbacks. The web dashboard is built with **Flask**, **MongoDB**, and **Plotly**.
 
-This project was developed as a final course project for **Big Data Visualization and Data Analytics (Semester 6)**.
+This project was developed as a final course project for **Big Data Visualization and Data Analytics (Semester 6)**
+and extended in **Phase 2 (Deep Learning)** into **AeroPredict 2.0** — a spatio-temporal graph neural network that
+forecasts disruption across the whole US airport network.
+
+---
+
+## 🚦 Start here (summary)
+
+### Quick start — run the app (no training needed)
+
+All models are already trained and included. On Windows (PowerShell), from the project folder:
+
+```powershell
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+python run_app.py
+```
+
+Open **http://127.0.0.1:5000/**. The terminal should show:
+
+```
+ACTIVE MODEL : DNN V2 (PyTorch)
+Network model loaded: ST-GNN (GCN + GRU) (47,818 parameters, 350 airports)
+```
+
+> The CPU build of PyTorch (~130 MB) is enough to run everything. A GPU build is only useful for retraining.
+> MongoDB is optional — without it the app works but the History page stays empty.
+
+### Features — status and where to find them
+
+| # | Feature | Status | Where in the app | Code |
+| :-- | :--- | :---: | :--- | :--- |
+| 1 | Weather-aware flight delay prediction (live Open-Meteo forecast, 15 days) | ✅ | Flight Prediction → *Flight conditions* panel | `core/weather_api.py`, `core/dnn_features_v2.py` |
+| 2 | Deep learning (multi-task DNN) — delay classification **and** delay minutes | ✅ | Flight Prediction → result card | `core/dnn_common.py`, `training/phase1_dnn/` |
+| 3 | Airport-level disruption forecasting with **LSTM / GRU** | ✅ | Network → *How the models compare* | `core/st_models.py` (`TemporalRNN`) |
+| 4 | Airport network graph — 350 airports (nodes), 6,576 routes (edges) | ✅ | Network → map (route lines) | `training/phase2_st_gnn/build_graph.py` |
+| 5 | **Spatio-Temporal GNN** (GCN or GAT + GRU) with 95 % uncertainty bands | ✅ | Network → map, warnings, simulator | `core/st_models.py` (`STGNN`) |
+| 6 | Delay propagation analysis across connected airports | ✅ | Network → *Delay propagation* | `training/phase2_st_gnn/propagation_analysis.py` |
+| 7 | Interactive airport disruption map with **+1 / +2 / +3 slot** forecasts | ✅ | Network → *Forecast delay rate* + *Bottleneck warnings* | `webapp/templates/network.html`, `core/st_inference.py` |
+| 8 | What-if simulators — network disruption **and** departure-time what-if | ✅ | Network → *What-if simulator* · Flight Prediction → *What if you fly at a different time?* | `core/st_inference.py`, `webapp/flask_app.py` |
+| 9 | Model comparison: ML vs DNN vs LSTM/GRU vs ST-GNN (ablation study) | ✅ | Network → *How the models compare* | `evaluation/run_ablation.py` |
+| 10 | All of the above integrated into the AeroPredict web app | ✅ | Navigation → **Network** tab | `webapp/` |
+
+### Trained models — files and which feature uses them
+
+| Model | File | Used by features | Status |
+| :--- | :--- | :--- | :--- |
+| **DNN V2** (embeddings + 512→256→128, two heads) | `models/dnn_v2/dnn_v2_model.pt` | 1, 2, 8 (departure-time what-if), 9 (as "Model 2") | ✅ trained — serves Flight Prediction |
+| DNN V1 (baseline MLP) | `models/dnn_v1/dnn_model.pt` | 2 — backup only if DNN V2 is missing | ✅ trained |
+| SVM + Gradient-Boosting regressor (Semester 6) | `models/classic_ml/` | 1, 2 — backup only if no DNN loads | ✅ trained |
+| **ST-GNN (GCN + GRU)** | `models/st_gnn/st_gnn_model.pt` | 5, 6 (model footprint), 7, 8 (network simulator), 9 | ✅ trained — serves the Network page |
+| ST-GNN (GAT + GRU) | `models/st_gnn/st_gnn_gat_model.pt` | 5, 9 | ✅ trained — comparison table |
+| GRU (temporal only) | `models/temporal/gru_model.pt` | 3, 9 | ✅ trained — comparison table |
+| LSTM (temporal only) | `models/temporal/lstm_model.pt` | 3, 9 | ✅ trained — comparison table |
+| Gradient boosting (ablation baseline) | — (re-fitted in ~15 s each run) | 9 (as "Model 1") | ✅ built by `evaluation/run_ablation.py` |
+
+Features 4 and 6 (measured side) are data analyses, not trained models: `build_graph.py` creates the graph and
+`propagation_analysis.py` produces the statistics. All Phase 2 models were trained to early stopping (best validation epoch kept).
+
+### What each page shows
+
+| Page | What it does |
+| :--- | :--- |
+| **Overview** `/` | 3D aircraft hero, network statistics (6.74 M flights, 349 airports, 15 airlines) and shortcuts |
+| **Flight Prediction** `/predict-page` | Enter route, date, time, airline → delay probability, risk level, estimated delay minutes, auto-filled weather, departure-time what-if |
+| **Network** `/network` | AeroPredict 2.0: disruption map (+1/+2/+3 slots), bottleneck warnings with 95 % bands, delay propagation, what-if simulator, model comparison |
+| **Analytics** `/visualizations` | Seven Plotly charts of 2023 delay patterns (seasonality, airlines, weather, airport map) |
+| **History** `/history` | Every prediction made, with search and risk filter (needs MongoDB) |
+| **Settings** `/settings` | Service status, model details, display preferences |
+
+> **The Network page is a historical replay of December 2023** — the held-out test month no model was trained on.
+> It opens on **10 Dec 2023** (a major East-Coast storm). Pick any 2023 date/slot and press *Run forecast*; hover an
+> airport to compare the forecast with what actually happened. It is not a live feed (the data ends 31 Dec 2023).
+
+### Headline results (December 2023 test)
+
+| Model | Graph | Temporal | MAE +1 slot | MAE +2 | MAE +3 |
+| :--- | :---: | :---: | ---: | ---: | ---: |
+| **ST-GNN (GAT + GRU)** | ✓ | ✓ | **0.099** | **0.102** | **0.103** |
+| ST-GNN (GCN + GRU) | ✓ | ✓ | 0.100 | 0.105 | 0.106 |
+| Gradient boosting (ML) | ✗ | lag features | 0.104 | 0.108 | 0.108 |
+| GRU | ✗ | ✓ | 0.103 | 0.109 | 0.110 |
+| LSTM | ✗ | ✓ | 0.104 | 0.108 | 0.110 |
+
+* Adding the airport graph lowers error by 3–6 % versus time-only models, more at longer horizons.
+* Airports connected by a route show **0.26** next-slot delay correlation vs **0.16** for unconnected pairs at the same distance (p < 10⁻⁹⁵).
+* DNN V2 (flight-level, Phase 1): **84.4 %** accuracy, AUC **0.80**, delay MAE **35.8 min**.
+* Full table, PR-AUC/F1 and charts: [Phase 2 results](#results--december-2023-test-forecast-airport-delay-rate-123-slots) and `evaluation/`.
+
+### Data — what is in the repository
+
+| Included in git | Not in git (share separately, e.g. Google Drive) |
+| :--- | :--- |
+| All trained models (`models/`) | `data/processed/preprocessed_flight_data_final.csv` (1.1 GB) |
+| Airport graph + propagation results (`data/graph/`) | Raw 2023 CSVs in `data/raw/` (US_flights_2023, weather, cancellations) |
+| Lookup tables, weather calibration (`data/lookups/`, `data/weather/`) | `venv/` |
+| Results tables and charts (`evaluation/`) | |
+
+The app and every page run from what is in git. The large CSVs are needed only to **rebuild the graph or retrain**.
+
+### Known limitations (stated honestly)
+
+* The processed 2023 file has **no departure hour** — one time step is a slot (Morning 06–12, Afternoon 12–18,
+  Evening 18–22, Night 22–06), so forecasts are for the next 1/2/3 **slots** (~6 h each), not hours.
+* It has **no delay minutes or aircraft tail numbers** — Phase 2 forecasts an airport's **delay rate**, and
+  propagation is measured **between connected airports**, not along individual aircraft rotations.
+* For disruption **alerts** gradient boosting is marginally ahead (PR-AUC 0.318 vs 0.308 for the ST-GNN).
+* DNN V2's score in the ablation table is **in-sample** (Phase 1 trained it on a random 95 % of all 2023 flights).
+* Not a live flight tracker: predictions run in real time and weather is live for the next 15 days, but delay
+  patterns come from 2023 data.
+
+### Retrain everything (optional)
+
+Needs `data/processed/preprocessed_flight_data_final.csv`. A GPU is used automatically if PyTorch has CUDA.
+
+```powershell
+python training\phase2_st_gnn\build_graph.py                              # airport graph, ~30 s
+python training\phase2_st_gnn\train_spatiotemporal.py --model stgnn_gcn   # ST-GNN (served by the app)
+python training\phase2_st_gnn\train_spatiotemporal.py --model stgnn_gat   # ST-GNN with attention
+python training\phase2_st_gnn\train_spatiotemporal.py --model gru         # temporal baseline
+python training\phase2_st_gnn\train_spatiotemporal.py --model lstm        # temporal baseline
+python training\phase2_st_gnn\propagation_analysis.py                     # propagation statistics
+python evaluation\run_ablation.py                                          # comparison table + charts
+```
+
+Phase 1 DNN retraining needs the raw `US_flights_2023.csv` in `data/raw/` — see [How to Run](#-how-to-run).
+
+### Working on a branch (collaborators)
+
+```powershell
+git checkout -b <your-branch-name>
+git add -A
+git commit -m "describe your change"
+git push -u origin <your-branch-name>
+```
+
+Then open a Pull Request on GitHub into `main`. To try someone's branch:
+`git fetch origin` then `git checkout <their-branch-name>`.
 
 ---
 
@@ -160,7 +299,7 @@ target is `route_rate` at **|r| = 0.21**, which is healthy signal rather than le
 | Optimiser | AdamW lr 2.5e-3, `ReduceLROnPlateau`, batch 16,384, grad-clip 5.0 |
 | Loss | BCE (classification) + 0.5 × SmoothL1 (regression, delayed rows only) |
 | Duration | 6,070 s (~101 min) on 12 CPU threads |
-| Command | `python train_dnn_v2.py` |
+| Command | `python training/phase1_dnn/train_dnn_v2.py` |
 
 ### DNN V1 training run (previous baseline)
 
@@ -172,7 +311,7 @@ target is `route_rate` at **|r| = 0.21**, which is healthy signal rather than le
 | Epochs | 15 / 15 (best epoch = 15, still improving, no early stop) |
 | Optimiser | AdamW, lr 1e-3, `ReduceLROnPlateau`, batch 8192 |
 | Duration | 754 s (~12.6 min) on 12 CPU threads |
-| Command | `python train_dnn.py --sample-frac 0.5 --epochs 15` |
+| Command | `python training/phase1_dnn/train_dnn.py --sample-frac 0.5 --epochs 15` |
 
 ---
 
@@ -266,57 +405,110 @@ AUC and MAE, and it maps wind/rain to the scale the model actually learned.
 
 ---
 
+## 🌐 AeroPredict 2.0 — Spatio-Temporal Network Model (Phase 2)
+
+Phase 1 predicts a single flight. Phase 2 models the **whole airport network**: delays at one
+airport spill over to the airports it connects to, so the network is learned as a graph.
+
+Feature status and model-to-feature mapping: see [Start here](#-start-here-summary).
+
+**Data limits (stated honestly):** the processed 2023 file has no departure hour, no delay minutes
+and no aircraft tail number. So one time step is a **slot (≈ 6 h)** — forecasts are for the next
+1, 2 and 3 slots rather than 1/2/3 hours — the target is the airport's **delay rate**, and
+propagation is measured **between connected airports**, not along individual aircraft rotations.
+
+### Run it (GPU used automatically)
+
+```bash
+pip install -r requirements.txt
+python training/phase2_st_gnn/build_graph.py                          # ~30 s
+python training/phase2_st_gnn/train_spatiotemporal.py --model stgnn_gcn
+python training/phase2_st_gnn/train_spatiotemporal.py --model stgnn_gat
+python training/phase2_st_gnn/train_spatiotemporal.py --model gru
+python training/phase2_st_gnn/train_spatiotemporal.py --model lstm
+python training/phase2_st_gnn/propagation_analysis.py
+python evaluation/run_ablation.py
+python run_app.py                                                     # → Network tab
+```
+
+### Results — December 2023 test (forecast airport delay rate, +1/+2/+3 slots)
+
+| Model | Role | Graph | Temporal | MAE +1 | MAE +2 | MAE +3 | RMSE | PR-AUC | Precision | Recall | F1 |
+| :--- | :--- | :---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Persistence | baseline | ✗ | last slot | 0.1354 | 0.1559 | 0.1489 | 0.2185 | 0.103 | 0.129 | 0.298 | 0.180 |
+| Historical mean | baseline | ✗ | no | 0.1300 | 0.1307 | 0.1306 | 0.1649 | 0.132 | 0.141 | 0.329 | 0.197 |
+| Gradient boosting (ML) | Model 1 | ✗ | lag features | 0.1036 | 0.1077 | 0.1084 | 0.1436 | 0.318 | 0.341 | 0.407 | 0.371 |
+| DNN V2 (Phase 1)* | Model 2 | ✗ | no | 0.0826 | 0.0828 | 0.0828 | 0.1203 | 0.588 | 0.542 | 0.611 | 0.574 |
+| GRU | Model 3 | ✗ | yes | 0.1033 | 0.1090 | 0.1104 | 0.1456 | 0.301 | 0.312 | 0.387 | 0.345 |
+| LSTM | Model 3 | ✗ | yes | 0.1039 | 0.1082 | 0.1096 | 0.1457 | 0.283 | 0.293 | 0.383 | 0.332 |
+| ST-GNN (GCN + GRU) | Model 4 | ✓ | yes | 0.0998 | 0.1045 | 0.1058 | 0.1428 | 0.308 | 0.325 | 0.388 | 0.354 |
+| ST-GNN (GAT + GRU) | Model 4 | ✓ | yes | 0.0989 | 0.1022 | 0.1032 | 0.1443 | 0.284 | 0.311 | 0.382 | 0.343 |
+
+* DNN V2 was trained in Phase 1 on a random 95 % of all 2023 flights, so it has seen most December flights — its score here is optimistic (in-sample).
+
+MAE is in delay-rate units (0.10 = 10 percentage points). Disruption = a slot with ≥ 5 departures
+and ≥ 40 % delayed. All models trained to early stopping (best validation epoch kept); retrain with the
+commands above to reproduce; `evaluation/run_ablation.py` regenerates this table.
+
+* Among models that never saw the test month, the **ST-GNNs have the lowest error at every
+  horizon**; adding the graph beats the temporal-only GRU/LSTM by 3–6 %, more at longer horizons.
+* For disruption *alerts*, gradient boosting is marginally ahead (PR-AUC 0.318 vs 0.308) — the
+  ST-GNN is trained for the delay rate, not for the alert threshold.
+* Every ST-GNN forecast carries a 95 % band; on the test month the bands contain the observed
+  rate ≈ 94–95 % of the time (well calibrated).
+
+![MAE by horizon](evaluation/figures/mae_by_horizon.png)
+
+### Delay propagation finding
+
+Across **3,774 busy routes**, the delay surprise at an airport in slot *t* correlates **0.26** with the destination's surprise in slot *t + 1*, against **0.16** for airport pairs with no direct route (Mann-Whitney p < 10⁻⁹⁵ in every distance band). The gap holds at every distance, so it is not just regional weather:
+
+| Distance | Connected | Not connected | Extra delay after a disruption (connected) |
+| :--- | ---: | ---: | ---: |
+| 0-800 km | 0.328 | 0.240 | +9.8 pp |
+| 800-1600 km | 0.263 | 0.168 | +6.5 pp |
+| 1600-∞ km | 0.205 | 0.088 | +3.5 pp |
+
+![Propagation](evaluation/figures/propagation_spillover.png)
+
+---
+
 ## 📁 Repository Structure
 
+> Full file-by-file map: [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md). Every folder also has its own short `README.md`.
+
 ```
-├── flight_delay/               # Raw flight dataset files (Ignored in Git except metadata)
-│   ├── airports_geolocation.csv # Airport coordinates metadata (lat/lon)
-│   ├── US_flights_2023.csv      # Raw 6.7M-flight dataset (not committed)
-│   ├── weather_meteo_by_airport.csv
-│   ├── datapreprocessing.py     # Legacy pandas preprocessing
-│   └── datatraining.py          # Legacy RandomForest training
-├── static/                     # Web app static assets
-│   ├── styles.css               # Styling rules (modern dashboard design)
-│   ├── plane.png                # Navbar artwork
-│   ├── take-off.jpg             # Landing-page background
-│   └── viz_data/                # Pre-processed JSON outputs for Plotly charts
-├── templates/                  # Flask Jinja2 HTML templates
-│   ├── home.html                # Landing page
-│   ├── predict.html             # Predictive UI form and results panel
-│   ├── visualizations.html      # Plots dashboard
-│   ├── history.html             # MongoDB prediction history
-│   └── settings.html            # Model/UI settings & MongoDB status
-├── dnn_common.py               # PyTorch networks (V1 MLP + V2 embeddings) + helpers
-├── dnn_features_v2.py          # V2 preprocessing: embeddings, weather, target encodings
-├── weather_api.py              # Open-Meteo client (15-day forecast, cached, fail-soft)
-├── calibrate_open_meteo.py     # Fits wx_calibration.json from the 2023 forecast archive
-├── validate_open_meteo.py      # 4-way weather-source comparison on real 2023 flights
-├── wx_calibration.json         # Per-airport Open-Meteo -> training-scale correction
-├── wx_validation.json          # Measured 4-way weather-source comparison (README table)
-├── train_dnn.py                # Train the V1 multi-task DNN (50% sample)
-├── train_dnn_v2.py             # Train the V2 DNN on the FULL dataset
-├── dnn_v2_model.pt             # Saved V2 weights + architecture config
-├── dnn_v2_preprocessor.pkl     # V2 vocabularies, weather arrays, rate tables, scaler
-├── dnn_v2_metrics.json         # V2 test metrics (shown in the UI)
-├── dnn_model.pt                # Saved V1 weights + config (baseline for comparison)
-├── dnn_preprocessor.pkl        # V1 feature columns, scaler stats, target scaler
-├── dnn_metrics.json            # V1 test metrics
-├── gbt_full_pipeline/          # Saved Spark MLlib GBT Classifier (optional, ignored)
-├── aeropredict_model.pkl       # SVM Classifier fallback pickle
-├── delay_regressor.pkl         # Gradient Boosting Regressor model pickle
-├── scaler.pkl                  # SVM Standard Scaler
-├── regressor_scaler.pkl        # Regressor Standard Scaler
-├── airport_coords.csv          # Lookups for airport locations
-├── airport_delay_lookup.csv    # Lookups for airport historical delay ratios
-├── weather_averages.csv        # Lookups for historical daily weather averages
-├── flask_app.py                # Main Flask web application backend
-├── train_model.py              # Script to train SVM fallback (+ Spark GBT)
-├── train_regressor.py          # Script to train delay regressor (GBT Regressor)
-├── make_gbt_flask_pipeline.py  # Script to train Spark MLlib GBT model
-├── benchmark.py                # HDFS / Spark / MongoDB benchmark (optional)
-├── requirements.txt            # Python dependencies
-├── .gitignore                  # Standard git exclusions for large data/models
-└── README.md                   # This project guide
+AeroPredict/
+├── run_app.py              ← start the website:  python run_app.py
+├── PROJECT_STRUCTURE.md    ← where every file lives
+├── README.md · LICENSE · requirements.txt · .gitignore
+│
+├── webapp/                 Flask website (flask_app.py, templates/, static/)
+├── core/                   Shared code: project_paths.py, dnn_*.py, weather_api.py, st_data/st_models/st_inference.py
+│
+├── data/
+│   ├── raw/                2023 flight, weather, cancellation, airport CSVs (large ones not in git)
+│   ├── processed/          cleaned / merged datasets
+│   ├── lookups/            airport coords, airport delay rates, weather averages (needed at startup)
+│   ├── weather/            wx_calibration.json, wx_validation.json
+│   └── graph/              Phase 2: airport graph + hourly series
+│
+├── models/
+│   ├── dnn_v2/             Phase 1 primary DNN (served by the app)
+│   ├── dnn_v1/             Phase 1 baseline DNN
+│   ├── classic_ml/         Semester 6 SVM / GBT / regressor
+│   ├── st_gnn/             Phase 2 ST-GNN checkpoints (GCN, GAT)
+│   └── temporal/           Phase 2 GRU / LSTM baselines
+│
+├── training/
+│   ├── phase1_dnn/         train_dnn_v2.py, train_dnn.py
+│   ├── phase2_st_gnn/      Phase 2: build_graph.py, train_spatiotemporal.py, propagation_analysis.py
+│   └── legacy_sem6/        Spark/HDFS + scikit-learn scripts from Semester 6
+│
+├── tools/                  weather_calibration/, lookups/
+├── evaluation/             Phase 2 ablation study: run_ablation.py, results/, figures/
+├── database/               Phase 2 PostgreSQL logging
+└── docs/                   phase2_blueprint/next_steps.pdf, reports
 ```
 
 ---
@@ -332,15 +524,16 @@ Ensure you have the following installed on your machine:
 ### 2. Environment Setup
 1. Clone this repository:
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/Dhruv-D-18/AeroPredict.git
    cd AeroPredict
    ```
 
 2. Create a virtual environment and install python dependencies:
    ```bash
    python -m venv venv
-   source venv/Scripts/activate     # On Windows: venv\Scripts\activate
+   venv\Scripts\activate            # macOS/Linux: source venv/bin/activate
    pip install -r requirements.txt
+   pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU PyTorch (enough to run)
    ```
 
 3. *(Optional — legacy Spark GBT only)* declare Hadoop/PySpark paths:
@@ -378,30 +571,30 @@ mongosh "mongodb://localhost:27017"
 
 - **Train the V2 multi-task DNN (primary, full dataset, no Spark needed)**:
   ```bash
-  python train_dnn_v2.py                        # 100% of rows, 12 epochs
-  python train_dnn_v2.py --sample-frac 0.02     # quick smoke test
+  python training/phase1_dnn/train_dnn_v2.py           # 100% of rows, 12 epochs
+  python training/phase1_dnn/train_dnn_v2.py --sample-frac 0.02     # quick smoke test
   ```
-  Writes `dnn_v2_model.pt`, `dnn_v2_preprocessor.pkl`, `dnn_v2_metrics.json`.
+  Writes `models/dnn_v2/dnn_v2_model.pt`, `dnn_v2_preprocessor.pkl`, `dnn_v2_metrics.json`.
   The app picks V2 up automatically; V1 is used only if V2 artifacts are absent.
 
 - **Train the V1 DNN baseline (50% sample, for comparison)**:
   ```bash
-  python train_dnn.py --sample-frac 0.5 --epochs 15
+  python training/phase1_dnn/train_dnn.py --sample-frac 0.5 --epochs 15
   ```
-  Writes `dnn_model.pt`, `dnn_preprocessor.pkl`, `dnn_metrics.json`.
+  Writes `models/dnn_v1/dnn_model.pt`, `dnn_preprocessor.pkl`, `dnn_metrics.json`.
 
 - **Optional legacy fallbacks**:
   ```bash
-  python make_gbt_flask_pipeline.py   # Spark GBT pipeline
-  python train_model.py               # Spark GBT + SVM pickle
-  python train_regressor.py           # sklearn GBT regressor
+  python training/legacy_sem6/make_gbt_flask_pipeline.py   # Spark GBT pipeline
+  python training/legacy_sem6/train_model.py               # Spark GBT + SVM pickle
+  python training/legacy_sem6/train_regressor.py           # sklearn GBT regressor
   ```
 
 ### 2. Start the Web Dashboard
 The DNN runs on CPU, so plain Python is enough, and the app can be launched
 from any directory:
 ```bash
-python flask_app.py
+python run_app.py
 ```
 Then open:
 ```
@@ -422,18 +615,19 @@ On startup the app prints exactly which model it is serving, e.g.:
 ```
 
 Model selection is automatic at import time:
-`dnn_v2_model.pt` + `dnn_v2_preprocessor.pkl` → V1 DNN artifacts →
-Spark GBT pipeline (only if `gbt_full_pipeline/` exists) → SVM.
+`models/dnn_v2/` → `models/dnn_v1/` →
+Spark GBT pipeline (only if `models/classic_ml/gbt_full_pipeline/` exists) → SVM.
+The Network page loads `models/st_gnn/st_gnn_model.pt` (falls back to GAT, then GRU/LSTM).
 No Spark, Hadoop or Java is needed for the DNN path.
 
 ### 3. Weather Calibration (one-off, optional)
-The app ships with `wx_calibration.json`, so live forecasts work out of the box.
+The app ships with `data/weather/wx_calibration.json`, so live forecasts work out of the box.
 Re-run this only if you change the training weather file or want to refresh the
 correction against a newer Open-Meteo archive:
 
 ```bash
-python calibrate_open_meteo.py            # ~18 archive requests, resumable
-python validate_open_meteo.py --rows 40000  # optional: 4-way weather comparison
+python tools/weather_calibration/calibrate_open_meteo.py            # ~18 archive requests, resumable
+python tools/weather_calibration/validate_open_meteo.py --rows 40000  # optional: 4-way weather comparison
 ```
 
 Both scripts cache responses in `.wx_cache/` (gitignored) and use only the

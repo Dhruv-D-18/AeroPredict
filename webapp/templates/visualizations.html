@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Analytics — AeroPredict{% endblock %}
+
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+<div class="container">
+
+    <div class="page-head">
+        <div>
+            <span class="eyebrow">{{ icon('chart-column', 'ic-sm') }} Analytics</span>
+            <h1 class="page-title">Delay patterns across the network</h1>
+            <p class="page-sub">{{ "{:,}".format(stats.total_flights) if stats.total_flights is number else stats.total_flights }} flights · {{ stats.airports }} airports · {{ stats.airlines }} airlines</p>
+        </div>
+        <span class="viz-status" id="viz-status">{{ icon('loader-circle', 'spin') }} Loading charts…</span>
+    </div>
+
+    <div class="kpi-grid kpi-3">
+        <div class="card kpi">
+            <span class="icon-tile">{{ icon('calendar-days') }}</span>
+            <div><div class="kpi-label">Peak delay month</div><div class="kpi-value" id="metric-peak-month">—</div></div>
+        </div>
+        <div class="card kpi">
+            <span class="icon-tile">{{ icon('plane') }}</span>
+            <div style="min-width:0"><div class="kpi-label">Most delayed airline</div><div class="kpi-value" id="metric-top-airline">—</div></div>
+        </div>
+        <div class="card kpi">
+            <span class="icon-tile">{{ icon('trending-up') }}</span>
+            <div><div class="kpi-label">Busiest delay month</div><div class="kpi-value" id="metric-delay-volume">—</div></div>
+        </div>
+    </div>
+
+    <section class="viz-grid">
+        <article class="card chart-card span-8">
+            <div class="card-head">
+                <div><div class="card-title">{{ icon('thermometer') }} Temperature vs delay</div><div class="card-sub">Flight sample with the average trend by temperature band</div></div>
+            </div>
+            <div id="temperature-delay-chart" class="chart-shell"><div class="skeleton"></div></div>
+        </article>
+
+        <article class="card chart-card span-4">
+            <div class="card-head">
+                <div><div class="card-title">{{ icon('clock') }} Delay by day and time</div><div class="card-sub">Average delay, minutes</div></div>
+            </div>
+            <div id="delay-heatmap-chart" class="chart-shell"><div class="skeleton"></div></div>
+        </article>
+
+        <article class="card chart-card span-6">
+            <div class="card-head">
+                <div><div class="card-title">{{ icon('chart-line') }} Monthly average delay</div><div class="card-sub">Seasonality across 2023</div></div>
+            </div>
+            <div id="monthly-delay-chart" class="chart-shell"><div class="skeleton"></div></div>
+        </article>
+
+        <article class="card chart-card span-6">
+            <div class="card-head">
+                <div><div class="card-title">{{ icon('chart-column') }} Monthly delay volume</div><div class="card-sub">Number of delayed flights</div></div>
+            </div>
+            <div id="monthly-delay-count-chart" class="chart-shell"><div class="skeleton"></div></div>
+        </article>
+
+        <article class="card chart-card span-6">
+            <div class="card-head">
+                <div><div class="card-title">{{ icon('plane') }} Airlines by average delay</div><div class="card-sub">Average arrival delay, minutes</div></div>
+            </div>
+            <div id="top-airlines-chart" class="chart-shell"><div class="skeleton"></div></div>
+        </article>
+
+        <article class="card chart-card span-6">
+            <div class="card-head">
+                <div><div class="card-title">{{ icon('droplets') }} Precipitation vs delay</div><div class="card-sub">Average delay by rainfall band</div></div>
+            </div>
+            <div id="precipitation-delay-chart" class="chart-shell"><div class="skeleton"></div></div>
+        </article>
+
+        <article class="card chart-card span-12">
+            <div class="card-head">
+                <div><div class="card-title">{{ icon('map') }} Airport delay map</div><div class="card-sub">Marker size and colour show average departure delay</div></div>
+            </div>
+            <div id="airport-map-chart" class="chart-shell"><div class="skeleton"></div></div>
+        </article>
+    </section>
+
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const C = {
+        primary: "#1769AA", navy: "#12304A", sky: "#8CC4EC", soft: "#EAF4FC",
+        text: "#172B3A", muted: "#718096", grid: "#EDF2F7", line: "#E3EBF3",
+        amber: "#D99A2B", red: "#C2493F", green: "#2F8F6B"
+    };
+    const chartConfig = { displayModeBar: false, responsive: true, scrollZoom: false,
+                          topojsonURL: "{{ url_for('static', filename='vendor/topojson/') }}" };   // bundled map outlines
+
+    const axisStyle = {
+        showgrid: true, gridcolor: C.grid, gridwidth: 1,
+        zeroline: false, showline: false, ticks: "",
+        tickfont: { color: C.muted, size: 11.5 },
+        title: { font: { color: C.muted, size: 12 } },
+        automargin: true
+    };
+    const baseLayout = {
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+        font: { family: "Inter, system-ui, sans-serif", color: C.text, size: 12 },
+        margin: { l: 56, r: 16, t: 12, b: 44 },
+        hoverlabel: { bgcolor: "#FFFFFF", bordercolor: C.line, font: { family: "Inter, system-ui, sans-serif", color: C.text, size: 12 } },
+        showlegend: false
+    };
+    const ax = (title, extra = {}) => ({ ...axisStyle, title: { ...axisStyle.title, text: title }, ...extra });
+
+    function revealCards() {
+        const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+            if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); }
+        }), { threshold: 0.08 });
+        document.querySelectorAll(".chart-card").forEach((el) => io.observe(el));
+    }
+
+    function setSummary(summary) {
+        document.getElementById("metric-peak-month").innerHTML =
+            `${summary.peak_month.label}<small>${summary.peak_month.value.toFixed(1)} min avg</small>`;
+        document.getElementById("metric-top-airline").innerHTML =
+            `<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:18px;">${summary.top_airline.label}</span><small style="margin:0">${summary.top_airline.value.toFixed(1)} min avg</small>`;
+        document.getElementById("metric-delay-volume").innerHTML =
+            `${summary.delay_volume_peak.label}<small>${summary.delay_volume_peak.value.toLocaleString()} delayed</small>`;
+    }
+
+    function renderTemperatureChart(dataset) {
+        const trend = dataset.trend, sample = dataset.sample;
+        Plotly.newPlot("temperature-delay-chart", [
+            {
+                x: sample.map((p) => p.temperature_c), y: sample.map((p) => p.arrival_delay),
+                mode: "markers", type: "scatter", name: "Flight sample",
+                marker: { size: 5, color: "rgba(23,105,170,0.13)", line: { width: 0 } },
+                hovertemplate: "Temp %{x}°C<br>Delay %{y:.1f} min<extra>Sample</extra>"
+            },
+            {
+                x: trend.map((p) => p.temp_band), y: trend.map((p) => p.avg_delay),
+                mode: "lines+markers", type: "scatter", name: "Average delay",
+                line: { color: C.navy, width: 2.5, shape: "spline", smoothing: 1.1 },
+                marker: { size: 6, color: "#FFFFFF", line: { color: C.navy, width: 2 } },
+                customdata: trend.map((p) => [p.flight_count, p.median_delay]),
+                hovertemplate: "Temp band %{x}°C<br>Avg delay %{y:.1f} min<br>Median %{customdata[1]:.1f} min<br>Flights %{customdata[0]}<extra>Trend</extra>"
+            }
+        ], {
+            ...baseLayout, showlegend: true,
+            legend: { orientation: "h", y: 1.08, x: 0, font: { size: 12, color: C.muted } },
+            xaxis: ax("Average temperature (°C)"),
+            yaxis: ax("Arrival delay (min)")
+        }, chartConfig);
+    }
+
+    function renderHeatmap(dataset) {
+        Plotly.newPlot("delay-heatmap-chart", [{
+            x: dataset.times, y: dataset.days, z: dataset.values, type: "heatmap",
+            xgap: 3, ygap: 3,
+            colorscale: [[0, "#F3F8FD"], [0.35, "#BFDCF2"], [0.7, "#4E93C9"], [1, "#12304A"]],
+            colorbar: { thickness: 8, outlinewidth: 0, tickfont: { color: C.muted, size: 10.5 }, ticksuffix: "m", len: 0.9 },
+            hovertemplate: "%{y} · %{x}<br>%{z:.1f} min<extra>Avg delay</extra>"
+        }], {
+            ...baseLayout,
+            margin: { l: 44, r: 8, t: 8, b: 36 },
+            xaxis: { ...axisStyle, showgrid: false },
+            yaxis: { ...axisStyle, showgrid: false, autorange: "reversed" }
+        }, chartConfig);
+    }
+
+    function renderMonthlyDelay(dataset) {
+        const ys = dataset.map((r) => r.Average_Arrival_Delay_Minutes);
+        const maxI = ys.indexOf(Math.max(...ys));
+        Plotly.newPlot("monthly-delay-chart", [{
+            x: dataset.map((r) => r.Month), y: ys,
+            mode: "lines+markers", type: "scatter",
+            line: { color: C.primary, width: 2.5, shape: "spline", smoothing: 0.85 },
+            fill: "tozeroy", fillcolor: "rgba(23,105,170,0.08)",
+            marker: { size: ys.map((_, i) => i === maxI ? 10 : 6), color: ys.map((_, i) => i === maxI ? C.amber : "#FFFFFF"), line: { color: ys.map((_, i) => i === maxI ? C.amber : C.primary), width: 2 } },
+            hovertemplate: "%{x}<br>%{y:.2f} min<extra>Average delay</extra>"
+        }], {
+            ...baseLayout,
+            xaxis: ax("", { showgrid: false }),
+            yaxis: ax("Average delay (min)")
+        }, chartConfig);
+    }
+
+    function renderMonthlyDelayCount(dataset) {
+        const ys = dataset.map((r) => r.Total_Delays);
+        const maxI = ys.indexOf(Math.max(...ys));
+        Plotly.newPlot("monthly-delay-count-chart", [{
+            x: dataset.map((r) => r.Month), y: ys, type: "bar",
+            marker: { color: ys.map((_, i) => i === maxI ? C.navy : "#9CC7E8"), line: { width: 0 } },
+            hovertemplate: "%{x}<br>%{y:,} delayed flights<extra>Volume</extra>"
+        }], {
+            ...baseLayout, bargap: 0.35,
+            xaxis: ax("", { showgrid: false }),
+            yaxis: ax("Delayed flights")
+        }, chartConfig);
+    }
+
+    function renderTopAirlines(dataset) {
+        const rows = [...dataset].reverse();
+        Plotly.newPlot("top-airlines-chart", [{
+            x: rows.map((r) => r.Average_Arrival_Delay), y: rows.map((r) => r.Airline),
+            type: "bar", orientation: "h",
+            marker: { color: rows.map((r, i) => r.Average_Arrival_Delay < 0 ? C.green : (i === rows.length - 1 ? C.navy : C.primary)), line: { width: 0 } },
+            hovertemplate: "%{y}<br>%{x:.2f} min<extra>Average delay</extra>"
+        }], {
+            ...baseLayout, bargap: 0.38,
+            margin: { l: 8, r: 16, t: 8, b: 40 },
+            xaxis: ax("Average arrival delay (min)"),
+            yaxis: { ...axisStyle, showgrid: false, tickfont: { color: C.text, size: 11.5 } }
+        }, chartConfig);
+    }
+
+    function renderPrecipitationChart(dataset) {
+        Plotly.newPlot("precipitation-delay-chart", [{
+            x: dataset.map((r) => r.rain_band), y: dataset.map((r) => r.avg_delay),
+            mode: "lines+markers", type: "scatter",
+            line: { color: C.primary, width: 2, shape: "linear" },
+            marker: { size: 4, color: C.primary },
+            fill: "tozeroy", fillcolor: "rgba(23,105,170,0.08)",
+            customdata: dataset.map((r) => [r.point_count]),
+            hovertemplate: "Rain band %{x} mm<br>Avg delay %{y:.1f} min<br>Points %{customdata[0]}<extra>Precipitation</extra>"
+        }], {
+            ...baseLayout,
+            xaxis: ax("Precipitation band (mm)"),
+            yaxis: ax("Average delay (min)")
+        }, chartConfig);
+    }
+
+    function renderAirportMap(dataset) {
+        Plotly.newPlot("airport-map-chart", [{
+            type: "scattergeo", mode: "markers",
+            lat: dataset.map((r) => r.LATITUDE), lon: dataset.map((r) => r.LONGITUDE),
+            text: dataset.map((r) => r.Dep_Airport),
+            customdata: dataset.map((r) => [r.Average_Delay]),
+            marker: {
+                size: dataset.map((r) => r.Bubble_Size),
+                color: dataset.map((r) => r.Average_Delay_Display),
+                colorscale: [[0, "#BFDCF2"], [0.4, "#1769AA"], [0.7, "#E2A53B"], [1, "#C2493F"]],
+                cmin: -15, cmax: 45, opacity: 0.82,
+                line: { color: "rgba(255,255,255,0.9)", width: 0.8 },
+                colorbar: { title: { text: "Avg delay", font: { color: C.muted, size: 11 } }, ticksuffix: "m", thickness: 8, outlinewidth: 0, tickfont: { color: C.muted, size: 10.5 }, len: 0.7 }
+            },
+            hovertemplate: "<b>%{text}</b><br>%{customdata[0]:.2f} min average delay<extra></extra>"
+        }], {
+            ...baseLayout,
+            margin: { l: 0, r: 0, t: 0, b: 0 },
+            geo: {
+                scope: "north america", projection: { type: "albers usa" },
+                showland: true, landcolor: "#F1F6FB",
+                showcountries: false, showlakes: true, lakecolor: "#FFFFFF",
+                showsubunits: true, subunitcolor: "#D3DFEA", subunitwidth: 0.6,
+                coastlinecolor: "#D3DFEA", bgcolor: "rgba(0,0,0,0)"
+            }
+        }, chartConfig);
+    }
+
+    async function bootVisualizations() {
+        const status = document.getElementById("viz-status");
+        try {
+            const response = await fetch("/api/visualization-data");
+            const payload = await response.json();
+            document.querySelectorAll('.chart-shell .skeleton').forEach((el) => el.remove());
+
+            setSummary(payload.summary);
+            renderTemperatureChart(payload.temperature_delay);
+            renderHeatmap(payload.delay_heatmap);
+            renderMonthlyDelay(payload.monthly_delay);
+            renderMonthlyDelayCount(payload.monthly_delay_count);
+            renderTopAirlines(payload.top_airlines);
+            renderPrecipitationChart(payload.precipitation_delay);
+            renderAirportMap(payload.airport_map);
+
+            status.innerHTML = '<span class="status ok"><span class="dot"></span>Charts up to date</span>';
+        } catch (error) {
+            console.error(error);
+            status.classList.add("err");
+            status.textContent = "Chart data could not be loaded.";
+        }
+    }
+
+    revealCards();
+    bootVisualizations();
+</script>
+{% endblock %}

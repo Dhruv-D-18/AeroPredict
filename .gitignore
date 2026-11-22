@@ -26,16 +26,16 @@ wheels/
 venv/
 ENV/
 
-# Large Datasets & CSV files (Excluding small lookup/geolocation files needed for startup)
-flight_delay/US_flights_2023.csv
-flight_delay/preprocessed_flight_datav2.csv
-flight_delay/preprocessed_flight_data_final.csv
-flight_delay/maj us flight - january 2024.csv
-flight_delay/Cancelled_Diverted_2023.csv
-flight_delay/weather_meteo_by_airport.csv
-# Uncomment the line below if you prefer to ignore all large CSVs in flight_delay/
-# flight_delay/*.csv
-
+# Large datasets (data/ layout — small lookup / geolocation files stay tracked)
+data/raw/US_flights_2023.csv
+data/raw/Cancelled_Diverted_2023.csv
+data/raw/weather_meteo_by_airport.csv
+data/raw/maj us flight - january 2024.csv
+data/processed/*.csv
+data/processed/*.parquet
+# Legacy locations (before the folder restructure)
+flight_delay/*.csv
+preprocessed_flight_data_final.csv
 
 # Machine Learning model checkpoints and large exports (Keep small pkl metadata if needed)
 # If you want to force users to train models before running, uncomment these:
@@ -43,8 +43,8 @@ flight_delay/weather_meteo_by_airport.csv
 
 # Visualization cache (weather_vs_delay.csv/json are 14MB and 46MB respectively)
 # They can be committed to allow offline dashboard rendering, but if you want a minimal repo:
-# static/viz_data/weather_vs_delay.csv
-# static/viz_data/weather_vs_delay.json
+# webapp/static/viz_data/weather_vs_delay.csv
+# webapp/static/viz_data/weather_vs_delay.json
 
 # Open-Meteo response cache (forecasts + archive downloads). Regenerated on demand;
 # wx_calibration.json IS tracked - it is small and required for correct serving.
