@@ -2,6 +2,10 @@
 {% from "_macros.html" import icon %}
 {% block title %}Flight Prediction — AeroPredict{% endblock %}
 
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="page">
 <div class="container">
@@ -25,15 +29,17 @@
             </div>
 
             <div class="route-row">
-                <div class="airport-field" onclick="document.getElementById('dep_airport').focus()">
+                <div class="airport-field">
                     <label for="dep_airport">{{ icon('plane-takeoff') }} From</label>
-                    <input type="text" id="dep_airport" name="dep_airport"
-                           list="airports-list"
-                           placeholder="ORD"
-                           value="{{ form_values.dep_airport if form_values else '' }}"
-                           maxlength="4" required spellcheck="false" autocapitalize="characters">
-                    <datalist id="airports-list"></datalist>
-                    <span class="meta" id="dep_meta">Departure airport code</span>
+                    <select id="dep_airport" name="dep_airport" required>
+                        <option value="" {% if not form_values or not form_values.dep_airport %}selected{% endif %} disabled hidden>Select departure airport</option>
+                        {% for code in airports %}
+                        <option value="{{ code }}" {% if form_values and form_values.dep_airport == code %}selected{% endif %}>
+                            {{ airports_display.get(code, code) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {{ icon('chevron-down', 'caret') }}
                 </div>
 
                 <div class="swap-wrap">
@@ -42,14 +48,17 @@
                     </button>
                 </div>
 
-                <div class="airport-field" onclick="document.getElementById('arr_airport').focus()">
+                <div class="airport-field">
                     <label for="arr_airport">{{ icon('plane-landing') }} To</label>
-                    <input type="text" id="arr_airport" name="arr_airport"
-                           list="airports-list"
-                           placeholder="JFK"
-                           value="{{ form_values.arr_airport if form_values else '' }}"
-                           maxlength="4" required spellcheck="false" autocapitalize="characters">
-                    <span class="meta" id="arr_meta">Arrival airport code</span>
+                    <select id="arr_airport" name="arr_airport" required>
+                        <option value="" {% if not form_values or not form_values.arr_airport %}selected{% endif %} disabled hidden>Select arrival airport</option>
+                        {% for code in airports %}
+                        <option value="{{ code }}" {% if form_values and form_values.arr_airport == code %}selected{% endif %}>
+                            {{ airports_display.get(code, code) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {{ icon('chevron-down', 'caret') }}
                 </div>
             </div>
 
@@ -89,8 +98,8 @@
     </form>
 
     <div class="predict-layout">
-        {# ───────── Result ───────── #}
-        <div>
+        {# ───────── Result (Left Column) ───────── #}
+        <div class="predict-main-col">
         {% if prediction %}
             {% set rp = prediction.route.split(' → ') %}
             {% set titles = {'low': 'Likely on time', 'medium': 'Possible delay', 'high': 'Delay likely'} %}
@@ -220,38 +229,92 @@
         {% endif %}
         </div>
 
-        {# ───────── Conditions (auto-filled) ───────── #}
-        <aside class="card card-pad cond-wrap" id="condCard">
-            <div class="card-head" style="margin-bottom:10px;">
-                <div class="card-title">{{ icon('cloud-sun') }} Flight conditions</div>
-            </div>
-
-            <div id="condEmpty" class="cond-placeholder" style="display:{% if autofill %}none{% else %}flex{% endif %};">
-                {{ icon('map-pin') }}
-                <span>Add both airports and a date to see departure weather and route details.</span>
-            </div>
-
-            <div id="autofillPanel" style="display:{% if autofill %}block{% else %}none{% endif %};">
-                <div class="cond-source">
-                    <span class="chip" id="afBadge">{{ icon('cloud-sun') }}<span id="afSource">{% if autofill and autofill.weather_source %}{{ autofill.weather_source }}{% else %}Auto-filled{% endif %}</span></span>
+        {# ───────── Sidebar (Right Column: Route Radar & Conditions) ───────── #}
+        <div class="predict-side-col">
+            <!-- 1. Live US Route Radar & Corridor Telemetry -->
+            <article class="card card-pad route-radar-card" id="routeRadarCard">
+                <div class="card-head radar-card-head">
+                    <div>
+                        <div class="card-title">{{ icon('radar') }} Flight Route Radar</div>
+                        <div class="card-sub" id="radarSub">Live Great-Circle US flight corridor</div>
+                    </div>
+                    <span class="chip chip-muted" id="radarStatusChip">Standby</span>
                 </div>
-                <div class="cond-list">
-                    <div class="cond"><svg class="ic"><use href="#i-thermometer"/></svg><div><div class="cond-lbl">Temperature</div><div class="cond-val" id="af_temp">{{ (autofill.tavg|string + '°C') if autofill else '' }}</div></div></div>
-                    <div class="cond"><svg class="ic"><use href="#i-droplets"/></svg><div><div class="cond-lbl">Precipitation</div><div class="cond-val" id="af_prcp">{{ (autofill.prcp|string + ' mm') if autofill else '' }}</div></div></div>
-                    <div class="cond"><svg class="ic"><use href="#i-wind"/></svg><div><div class="cond-lbl">Wind speed</div><div class="cond-val" id="af_wspd">{{ (autofill.wspd|string + ' km/h') if autofill else '' }}</div></div></div>
-                    <div class="cond"><svg class="ic"><use href="#i-gauge"/></svg><div><div class="cond-lbl">Air pressure</div><div class="cond-val" id="af_pres">{{ (autofill.pres|string + ' hPa') if autofill else '' }}</div></div></div>
-                    <div class="cond"><svg class="ic"><use href="#i-calendar-days"/></svg><div><div class="cond-lbl">Day of week</div><div class="cond-val" id="af_day">{{ autofill.day_of_week if autofill else '' }}</div></div></div>
-                    <div class="cond"><svg class="ic"><use href="#i-calendar"/></svg><div><div class="cond-lbl">Weekend flight</div><div class="cond-val" id="af_weekend">{{ autofill.is_weekend if autofill else '' }}</div></div></div>
-                    <div class="cond"><svg class="ic"><use href="#i-timer"/></svg><div><div class="cond-lbl">Typical duration</div><div class="cond-val" id="af_dur">{{ (autofill.flight_duration|string + ' mins') if autofill else '' }}</div></div></div>
-                    <div class="cond"><svg class="ic"><use href="#i-route"/></svg><div><div class="cond-lbl">Route type</div><div class="cond-val" id="af_route">{{ autofill.route_type if autofill else '' }}</div></div></div>
-                    <div class="cond wide"><svg class="ic"><use href="#i-plane"/></svg><div><div class="cond-lbl">Aircraft age</div><div class="cond-val" id="af_age">12 years (fleet median)</div></div></div>
+
+                <div class="radar-map-wrap">
+                    <div id="routeRadarMap" class="radar-map-canvas"><div class="skeleton"></div></div>
+                    <div class="radar-overlay-prompt" id="radarPrompt">
+                        {{ icon('plane-takeoff') }}
+                        <span>Select departure & arrival airports to plot flight corridor</span>
+                    </div>
                 </div>
-            </div>
-        </aside>
+
+                <!-- Telemetry HUD Grid -->
+                <div class="radar-hud" id="radarHud">
+                    <div class="hud-item">
+                        <div class="hud-lbl">{{ icon('route') }} Distance</div>
+                        <div class="hud-val" id="hudDistance">—</div>
+                        <div class="hud-sub" id="hudDistKm">Great-Circle air miles</div>
+                    </div>
+                    <div class="hud-item">
+                        <div class="hud-lbl">{{ icon('timer') }} Est. Flight Time</div>
+                        <div class="hud-val" id="hudDuration">—</div>
+                        <div class="hud-sub" id="hudSpeed">Cruise air time</div>
+                    </div>
+                    <div class="hud-item">
+                        <div class="hud-lbl">{{ icon('plane') }} Route Corridor</div>
+                        <div class="hud-val" id="hudHaul">—</div>
+                        <div class="hud-sub" id="hudRoutePair">Origin ➔ Destination</div>
+                    </div>
+                    <div class="hud-item">
+                        <div class="hud-lbl">{{ icon('navigation') }} True Bearing</div>
+                        <div class="hud-val" id="hudBearing">—</div>
+                        <div class="hud-sub" id="hudHeading">Compass heading</div>
+                    </div>
+                </div>
+            </article>
+
+            {# ───────── 2. Conditions (auto-filled) ───────── #}
+            <aside class="card card-pad cond-wrap" id="condCard">
+                <div class="card-head" style="margin-bottom:10px;">
+                    <div class="card-title">{{ icon('cloud-sun') }} Flight conditions</div>
+                </div>
+
+                <div id="condEmpty" class="cond-placeholder" style="display:{% if autofill %}none{% else %}flex{% endif %};">
+                    {{ icon('map-pin') }}
+                    <span>Add both airports and a date to see departure weather and route details.</span>
+                </div>
+
+                <div id="autofillPanel" style="display:{% if autofill %}block{% else %}none{% endif %};">
+                    <div class="cond-source">
+                        <span class="chip" id="afBadge">{{ icon('cloud-sun') }}<span id="afSource">{% if autofill and autofill.weather_source %}{{ autofill.weather_source }}{% else %}Auto-filled{% endif %}</span></span>
+                    </div>
+                    <div class="cond-list">
+                        <div class="cond"><svg class="ic"><use href="#i-thermometer"/></svg><div><div class="cond-lbl">Temperature</div><div class="cond-val" id="af_temp">{{ (autofill.tavg|string + '°C') if autofill else '' }}</div></div></div>
+                        <div class="cond"><svg class="ic"><use href="#i-droplets"/></svg><div><div class="cond-lbl">Precipitation</div><div class="cond-val" id="af_prcp">{{ (autofill.prcp|string + ' mm') if autofill else '' }}</div></div></div>
+                        <div class="cond"><svg class="ic"><use href="#i-wind"/></svg><div><div class="cond-lbl">Wind speed</div><div class="cond-val" id="af_wspd">{{ (autofill.wspd|string + ' km/h') if autofill else '' }}</div></div></div>
+                        <div class="cond"><svg class="ic"><use href="#i-gauge"/></svg><div><div class="cond-lbl">Air pressure</div><div class="cond-val" id="af_pres">{{ (autofill.pres|string + ' hPa') if autofill else '' }}</div></div></div>
+                        <div class="cond"><svg class="ic"><use href="#i-calendar-days"/></svg><div><div class="cond-lbl">Day of week</div><div class="cond-val" id="af_day">{{ autofill.day_of_week if autofill else '' }}</div></div></div>
+                        <div class="cond"><svg class="ic"><use href="#i-calendar"/></svg><div><div class="cond-lbl">Weekend flight</div><div class="cond-val" id="af_weekend">{{ autofill.is_weekend if autofill else '' }}</div></div></div>
+                        <div class="cond"><svg class="ic"><use href="#i-timer"/></svg><div><div class="cond-lbl">Typical duration</div><div class="cond-val" id="af_dur">{{ (autofill.flight_duration|string + ' mins') if autofill else '' }}</div></div></div>
+                        <div class="cond"><svg class="ic"><use href="#i-route"/></svg><div><div class="cond-lbl">Route type</div><div class="cond-val" id="af_route">{{ autofill.route_type if autofill else '' }}</div></div></div>
+                        <div class="cond wide"><svg class="ic"><use href="#i-plane"/></svg><div><div class="cond-lbl">Aircraft age</div><div class="cond-val" id="af_age">12 years (fleet median)</div></div></div>
+                    </div>
+                </div>
+            </aside>
+        </div>
     </div>
 
 </div>
 </div>
+
+{# ── Coordinates & Names Data Payload ── #}
+<script id="coordsData" type="application/json">
+{{ coords_lookup|tojson }}
+</script>
+<script id="airportsDisplayData" type="application/json">
+{{ airports_display|tojson }}
+</script>
 {% endblock %}
 
 {% block scripts %}
@@ -259,42 +322,343 @@
 (function () {
     const $ = (id) => document.getElementById(id);
     const dep = $('dep_airport'), arr = $('arr_airport');
-    let airports = new Set();
 
-    // Load airports into datalist
-    fetch('/api/airports').then(r => r.json()).then(list => {
-        const dl = $('airports-list');
-        list.forEach(a => { const opt = document.createElement('option'); opt.value = a; dl.appendChild(opt); });
-        airports = new Set(list);
-        updateMeta();
-    }).catch(() => {});
+    // Load coordinates and airport display names safely
+    const coordsEl = $('coordsData');
+    const coordsMap = coordsEl ? JSON.parse(coordsEl.textContent) : {};
+    const namesEl = $('airportsDisplayData');
+    const airportNames = namesEl ? JSON.parse(namesEl.textContent) : {};
 
-    function updateMeta() {
-        [[dep, 'dep_meta', 'Departure airport code'], [arr, 'arr_meta', 'Arrival airport code']].forEach(([el, id, fallback]) => {
-            const code = el.value.trim().toUpperCase();
-            const meta = $(id);
-            if (code.length >= 3 && airports.size && !airports.has(code)) { meta.textContent = 'Not in our airport list'; meta.classList.remove('has-city'); }
-            else if (code.length >= 3 && airports.has(code)) { meta.textContent = 'Airport recognised'; meta.classList.add('has-city'); }
-            else { meta.textContent = fallback; meta.classList.remove('has-city'); }
-        });
+    // ── Visual Palette (matching US Flight Route Map reference) ──
+    const C_OCEAN = '#7AC5FA';   // sky blue ocean
+    const C_LAND  = '#FFFFFF';   // white continental USA landmass
+    const C_PIN_DEP = '#EF4444'; // vibrant red departure pin
+    const C_PIN_ARR = '#DC2626'; // vibrant red arrival pin
+    const C_LINE    = '#1E293B'; // dark slate dashed flight path
+
+    const mapCfg = {
+        displayModeBar: false,
+        responsive: true,
+        topojsonURL: "{{ url_for('static', filename='vendor/topojson/') }}"
+    };
+
+    function haversineDist(lat1, lon1, lat2, lon2) {
+        const toRad = Math.PI / 180;
+        const dLat = (lat2 - lat1) * toRad;
+        const dLon = (lon2 - lon1) * toRad;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+        const miles = Math.round(3958.8 * c);
+        const km = Math.round(6371.0 * c);
+        return { miles, km, c };
     }
 
-    // Uppercase airport codes as the user types
-    [dep, arr].forEach(el => el.addEventListener('input', () => {
-        const p = el.selectionStart; el.value = el.value.toUpperCase(); el.setSelectionRange(p, p); updateMeta();
-    }));
+    function calculateBearing(lat1, lon1, lat2, lon2) {
+        const toRad = Math.PI / 180;
+        const dLon = (lon2 - lon1) * toRad;
+        const y = Math.sin(dLon) * Math.cos(lat2 * toRad);
+        const x = Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad) -
+                  Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos(dLon);
+        const deg = Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360);
+        const pts = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+        const cardinal = pts[Math.floor(((deg + 11.25) / 22.5)) % 16];
+        return { deg, cardinal };
+    }
+
+    function interpolateArc(lat1, lon1, lat2, lon2, n = 36) {
+        const toRad = Math.PI / 180;
+        const toDeg = 180 / Math.PI;
+        const rLat1 = lat1 * toRad, rLon1 = lon1 * toRad;
+        const rLat2 = lat2 * toRad, rLon2 = lon2 * toRad;
+        const d = 2 * Math.asin(Math.sqrt(
+            Math.sin((rLat2 - rLat1) / 2) ** 2 +
+            Math.cos(rLat1) * Math.cos(rLat2) * Math.sin((rLon2 - rLon1) / 2) ** 2
+        ));
+        if (d < 1e-6) return { lats: [lat1], lons: [lon1], midLat: lat1, midLon: lon1 };
+
+        const lats = [], lons = [];
+        for (let i = 0; i <= n; i++) {
+            const f = i / n;
+            const A = Math.sin((1 - f) * d) / Math.sin(d);
+            const B = Math.sin(f * d) / Math.sin(d);
+            const x = A * Math.cos(rLat1) * Math.cos(rLon1) + B * Math.cos(rLat2) * Math.cos(rLon2);
+            const y = A * Math.cos(rLat1) * Math.sin(rLon1) + B * Math.cos(rLat2) * Math.sin(rLon2);
+            const z = A * Math.sin(rLat1) + B * Math.sin(rLat2);
+            const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+            const lon = Math.atan2(y, x);
+            lats.push(lat * toDeg);
+            lons.push(lon * toDeg);
+        }
+        const midIdx = Math.floor(n / 2);
+        return { lats, lons, midLat: lats[midIdx], midLon: lons[midIdx] };
+    }
+
+    // ── Render / Update Route Radar Map ─────────────────────────────
+    function updateRadarMap() {
+        const dCode = dep.value.trim().toUpperCase();
+        const aCode = arr.value.trim().toUpperCase();
+        const dCoords = coordsMap[dCode];
+        const aCoords = coordsMap[aCode];
+
+        const promptEl     = $('radarPrompt');
+        const chipEl       = $('radarStatusChip');
+        const hudDist      = $('hudDistance');
+        const hudDistKm    = $('hudDistKm');
+        const hudDur       = $('hudDuration');
+        const hudSpeed     = $('hudSpeed');
+        const hudHaul      = $('hudHaul');
+        const hudRoutePair = $('hudRoutePair');
+        const hudBearing   = $('hudBearing');
+        const hudHeading   = $('hudHeading');
+
+        document.querySelectorAll('#routeRadarMap .skeleton').forEach(el => el.remove());
+
+        const traces = [];
+
+        if (dCoords && aCoords && dCode !== aCode) {
+            // Both selected: draw great-circle corridor, midpoint airplane, and red pins
+            const { lats, lons, midLat, midLon } = interpolateArc(dCoords[0], dCoords[1], aCoords[0], aCoords[1]);
+            const distInfo = haversineDist(dCoords[0], dCoords[1], aCoords[0], aCoords[1]);
+            const bearingInfo = calculateBearing(dCoords[0], dCoords[1], aCoords[0], aCoords[1]);
+
+            const estMinutes = Math.max(35, Math.round(distInfo.miles / 8.2 + 25));
+            const h = Math.floor(estMinutes / 60);
+            const m = estMinutes % 60;
+            const durFormatted = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+            let haulLabel = 'Short Haul';
+            if (distInfo.miles > 1500) haulLabel = 'Long Haul';
+            else if (distInfo.miles > 500) haulLabel = 'Medium Haul';
+
+            // 1. Dashed Great-Circle flight corridor line
+            traces.push({
+                type: 'scattergeo',
+                mode: 'lines',
+                lat: lats,
+                lon: lons,
+                line: {
+                    color: C_LINE,
+                    width: 2.8,
+                    dash: 'dash'
+                },
+                hoverinfo: 'text',
+                hovertext: `<b>Flight Corridor</b><br>${dCode} → ${aCode}<br>${distInfo.miles.toLocaleString()} mi (${distInfo.km.toLocaleString()} km)<br>Est. Air Time: ~${durFormatted}`
+            });
+
+            // 2. Airplane marker placed along corridor
+            traces.push({
+                type: 'scattergeo',
+                mode: 'text',
+                lat: [midLat],
+                lon: [midLon],
+                text: ['✈'],
+                textfont: { size: 18, color: '#0F172A' },
+                hoverinfo: 'text',
+                hovertext: `<b>In-Flight Vector</b>: ${dCode} ➔ ${aCode}<br>Bearing: ${bearingInfo.deg}° (${bearingInfo.cardinal})`
+            });
+
+            // 3. Airport pin outer markers (red circles with white outline)
+            traces.push({
+                type: 'scattergeo',
+                mode: 'markers+text',
+                lat: [dCoords[0], aCoords[0]],
+                lon: [dCoords[1], aCoords[1]],
+                text: [dCode, aCode],
+                textposition: ['top center', 'top center'],
+                textfont: { family: 'Inter, system-ui, sans-serif', size: 12, color: '#0F172A', weight: 700 },
+                marker: {
+                    size: 14,
+                    color: [C_PIN_DEP, C_PIN_ARR],
+                    line: { color: '#FFFFFF', width: 2.5 }
+                },
+                hoverinfo: 'text',
+                hovertext: [
+                    `<b>Departure</b>: ${dCode}<br>${airportNames[dCode] || ''}`,
+                    `<b>Arrival</b>: ${aCode}<br>${airportNames[aCode] || ''}`
+                ]
+            });
+
+            // 4. Inner white center dot for pins
+            traces.push({
+                type: 'scattergeo',
+                mode: 'markers',
+                lat: [dCoords[0], aCoords[0]],
+                lon: [dCoords[1], aCoords[1]],
+                marker: { size: 5, color: '#FFFFFF' },
+                hoverinfo: 'none'
+            });
+
+            // Update Telemetry HUD
+            hudDist.innerHTML = `${distInfo.miles.toLocaleString()}<small> mi</small>`;
+            hudDistKm.textContent = `${distInfo.km.toLocaleString()} km Great-Circle`;
+            hudDur.textContent = durFormatted;
+            hudSpeed.textContent = `~${estMinutes} mins total air time`;
+            hudHaul.textContent = haulLabel;
+            hudRoutePair.textContent = `${dCode} ➔ ${aCode}`;
+            hudBearing.textContent = `${bearingInfo.deg}° ${bearingInfo.cardinal}`;
+            hudHeading.textContent = `Compass heading`;
+
+            chipEl.textContent = 'Corridor Active';
+            chipEl.className = 'chip chip-primary';
+            if (promptEl) promptEl.classList.add('is-hidden');
+
+        } else if (dCoords) {
+            // Only departure selected
+            traces.push({
+                type: 'scattergeo',
+                mode: 'markers+text',
+                lat: [dCoords[0]],
+                lon: [dCoords[1]],
+                text: [dCode],
+                textposition: 'top center',
+                textfont: { family: 'Inter, system-ui, sans-serif', size: 12, color: '#0F172A', weight: 700 },
+                marker: { size: 14, color: C_PIN_DEP, line: { color: '#FFFFFF', width: 2.5 } },
+                hoverinfo: 'text',
+                hovertext: [`<b>Departure</b>: ${dCode}<br>${airportNames[dCode] || ''}`]
+            });
+            traces.push({
+                type: 'scattergeo',
+                mode: 'markers',
+                lat: [dCoords[0]],
+                lon: [dCoords[1]],
+                marker: { size: 5, color: '#FFFFFF' },
+                hoverinfo: 'none'
+            });
+
+            hudDist.textContent = '—';
+            hudDistKm.textContent = 'Select arrival airport';
+            hudDur.textContent = '—';
+            hudSpeed.textContent = 'Awaiting destination';
+            hudHaul.textContent = 'Origin set';
+            hudRoutePair.textContent = `${dCode} ➔ ?`;
+            hudBearing.textContent = '—';
+            hudHeading.textContent = 'Compass heading';
+
+            chipEl.textContent = 'Origin Pinned';
+            chipEl.className = 'chip chip-muted';
+            if (promptEl) {
+                promptEl.innerHTML = `<svg class="ic"><use href="#i-plane-landing"/></svg><span>Origin ${dCode} pinned. Now select an arrival airport.</span>`;
+                promptEl.classList.remove('is-hidden');
+            }
+
+        } else if (aCoords) {
+            // Only arrival selected
+            traces.push({
+                type: 'scattergeo',
+                mode: 'markers+text',
+                lat: [aCoords[0]],
+                lon: [aCoords[1]],
+                text: [aCode],
+                textposition: 'top center',
+                textfont: { family: 'Inter, system-ui, sans-serif', size: 12, color: '#0F172A', weight: 700 },
+                marker: { size: 14, color: C_PIN_ARR, line: { color: '#FFFFFF', width: 2.5 } },
+                hoverinfo: 'text',
+                hovertext: [`<b>Arrival</b>: ${aCode}<br>${airportNames[aCode] || ''}`]
+            });
+            traces.push({
+                type: 'scattergeo',
+                mode: 'markers',
+                lat: [aCoords[0]],
+                lon: [aCoords[1]],
+                marker: { size: 5, color: '#FFFFFF' },
+                hoverinfo: 'none'
+            });
+
+            hudDist.textContent = '—';
+            hudDistKm.textContent = 'Select departure airport';
+            hudDur.textContent = '—';
+            hudSpeed.textContent = 'Awaiting origin';
+            hudHaul.textContent = 'Dest set';
+            hudRoutePair.textContent = `? ➔ ${aCode}`;
+            hudBearing.textContent = '—';
+            hudHeading.textContent = 'Compass heading';
+
+            chipEl.textContent = 'Dest Pinned';
+            chipEl.className = 'chip chip-muted';
+            if (promptEl) {
+                promptEl.innerHTML = `<svg class="ic"><use href="#i-plane-takeoff"/></svg><span>Destination ${aCode} pinned. Now select a departure airport.</span>`;
+                promptEl.classList.remove('is-hidden');
+            }
+
+        } else {
+            // Standby empty state
+            hudDist.textContent = '—';
+            hudDistKm.textContent = 'Great-Circle air miles';
+            hudDur.textContent = '—';
+            hudSpeed.textContent = 'Cruise air time';
+            hudHaul.textContent = '—';
+            hudRoutePair.textContent = 'Origin ➔ Destination';
+            hudBearing.textContent = '—';
+            hudHeading.textContent = 'Compass heading';
+
+            chipEl.textContent = 'Standby';
+            chipEl.className = 'chip chip-muted';
+            if (promptEl) {
+                promptEl.innerHTML = `<svg class="ic"><use href="#i-plane-takeoff"/></svg><span>Select departure & arrival airports to plot flight corridor</span>`;
+                promptEl.classList.remove('is-hidden');
+            }
+        }
+
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { l: 0, r: 0, t: 0, b: 0 },
+            showlegend: false,
+            geo: {
+                scope: 'usa',
+                projection: { type: 'albers usa' },
+                showland: true,
+                landcolor: C_LAND,
+                showcoastlines: true,
+                coastlinecolor: '#CBD5E1',
+                coastlinewidth: 0.9,
+                showsubunits: true,
+                subunitcolor: '#E2E8F0',
+                subunitwidth: 0.6,
+                showocean: true,
+                oceancolor: C_OCEAN,
+                showlakes: true,
+                lakecolor: C_OCEAN,
+                bgcolor: 'rgba(0,0,0,0)'
+            },
+            hoverlabel: {
+                bgcolor: '#FFFFFF',
+                bordercolor: '#CBD5E1',
+                font: { family: 'Inter, system-ui, sans-serif', size: 12, color: '#0F172A' }
+            }
+        };
+
+        if (window.Plotly) {
+            Plotly.react('routeRadarMap', traces, layout, mapCfg);
+        }
+    }
+
+    // Initialize map on load
+    if (window.Plotly) {
+        updateRadarMap();
+    } else {
+        window.addEventListener('load', updateRadarMap);
+    }
+    window.addEventListener('resize', () => {
+        if (window.Plotly) Plotly.Plots.resize('routeRadarMap');
+    });
 
     // Swap airports
     $('swapBtn').addEventListener('click', (e) => {
         e.stopPropagation();
-        [dep.value, arr.value] = [arr.value, dep.value];
+        const tmp = dep.value;
+        dep.value = arr.value;
+        arr.value = tmp;
         const b = e.currentTarget; b.classList.toggle('spin-once');
-        updateMeta(); scheduleAutofill();
+        updateRadarMap();
+        scheduleAutofill();
     });
 
     // Auto-fill on input change
     let afTimer = null;
-    function scheduleAutofill() { clearTimeout(afTimer); afTimer = setTimeout(fetchAutofill, 600); }
+    function scheduleAutofill() { clearTimeout(afTimer); afTimer = setTimeout(fetchAutofill, 500); }
 
     async function fetchAutofill() {
         const d    = dep.value.trim().toUpperCase();
@@ -318,11 +682,39 @@
             $('afSource').textContent   = x.weather_source;
             $('autofillPanel').style.display = 'block';
             $('condEmpty').style.display = 'none';
+
+            // Sync telemetry HUD with server calibrated dataset facts
+            if (x.flight_duration) {
+                const h = Math.floor(x.flight_duration / 60);
+                const m = x.flight_duration % 60;
+                $('hudDuration').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+                $('hudSpeed').textContent = `~${x.flight_duration} mins dataset median`;
+            }
+            if (x.route_type) {
+                $('hudHaul').textContent = x.route_type;
+            }
+            if (x.dist_miles) {
+                $('hudDistance').innerHTML = `${x.dist_miles.toLocaleString()}<small> mi</small>`;
+                $('hudDistKm').textContent = `${x.dist_km.toLocaleString()} km Great-Circle`;
+            }
+            if (x.bearing_deg != null && x.bearing_cardinal) {
+                $('hudBearing').textContent = `${x.bearing_deg}° ${x.bearing_cardinal}`;
+            }
         } catch (e) { console.warn('Autofill error:', e); }
         finally { $('condCard').classList.remove('loading'); }
     }
 
-    ['dep_airport', 'arr_airport', 'travel_date', 'dep_time'].forEach(id => {
+    ['dep_airport', 'arr_airport'].forEach(id => {
+        const el = $(id);
+        if (el) {
+            el.addEventListener('change', () => {
+                updateRadarMap();
+                scheduleAutofill();
+            });
+        }
+    });
+
+    ['travel_date', 'dep_time'].forEach(id => {
         const el = $(id);
         if (el) { el.addEventListener('change', scheduleAutofill); el.addEventListener('input', scheduleAutofill); }
     });
@@ -340,6 +732,7 @@
         b.querySelector('use').setAttribute('href', '#i-search');
         b.querySelector('svg').classList.remove('spin');
         b.querySelector('span').textContent = 'Check delay risk';
+        updateRadarMap();
     });
 
     // Friendly date on the result card

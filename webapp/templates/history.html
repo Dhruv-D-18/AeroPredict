@@ -12,10 +12,10 @@
             <h1 class="page-title">Prediction history</h1>
             <p class="page-sub">Your most recent flight checks.</p>
         </div>
-        {% if mongo_ok %}
-        <span class="status ok"><span class="dot"></span>History storage connected</span>
+        {% if db_ok or mongo_ok %}
+        <span class="status ok"><span class="dot"></span>Database connected ({{ db_engine or 'PostgreSQL' }})</span>
         {% else %}
-        <span class="status off"><span class="dot"></span>History storage offline</span>
+        <span class="status off"><span class="dot"></span>Database offline</span>
         {% endif %}
     </div>
 
@@ -98,12 +98,12 @@
         {% else %}
         <div class="empty">
             <span class="icon-tile">{{ icon('inbox') }}</span>
-            {% if mongo_ok %}
+            {% if db_ok or mongo_ok %}
             <h3>No predictions yet</h3>
-            <p>Flights you check will be listed here.</p>
+            <p>Flights you check will be recorded in PostgreSQL (<code>flight_predictions</code> table) and listed here.</p>
             {% else %}
             <h3>History is unavailable</h3>
-            <p>Start MongoDB on port 27017 and restart the app to keep a record of your predictions.</p>
+            <p>Database storage is offline. Start PostgreSQL on port 5432 to keep a record of your predictions.</p>
             {% endif %}
             <a href="/predict-page" class="btn btn-primary btn-sm" style="margin-top:8px;">{{ icon('plane-takeoff') }}Check a flight</a>
         </div>

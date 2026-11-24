@@ -11,6 +11,7 @@ Spark / Hadoop / Java are *not* required at runtime.
 
 # ── locate project folders (see core/project_paths.py) ──
 import sys as _sys
+import math
 from pathlib import Path as _Path
 _ROOT = next(p for p in _Path(__file__).resolve().parents if (p / "core" / "project_paths.py").exists())
 _sys.path.insert(0, str(_ROOT / "core"))
@@ -23,7 +24,10 @@ import numpy as np
 from datetime import datetime, date
 from functools import lru_cache
 from pathlib import Path
-from pymongo import MongoClient
+
+# ── database: PostgreSQL with zero-fail local fallback (Phase 2) ──
+_sys.path.insert(0, str(_ROOT / "database"))
+import db_postgres as db
 
 # Resolve every artifact / lookup relative to this file so the app starts
 # correctly no matter which directory `python flask_app.py` is launched from.
@@ -39,18 +43,11 @@ except Exception as _weather_import_error:      # pragma: no cover
 app = Flask(__name__)
 
 # ==============================
-# MONGODB CONNECTION
+# POSTGRESQL DATABASE CONNECTION (Phase 2)
 # ==============================
-mongo_ok  = False
-mongo_col = None
-try:
-    _mc = MongoClient("mongodb://localhost:27017/", serverSelectionTimeoutMS=3000)
-    _mc.server_info()                          # test connection
-    mongo_col = _mc["aeropredict"]["predictions"]
-    mongo_ok  = True
-    print("MongoDB connected — aeropredict.predictions")
-except Exception as _me:
-    print(f"MongoDB not available: {_me}")
+db_ok = db.db_ok
+db_engine = db.db_engine
+mongo_ok = db.db_ok
 
 # ==============================
 # OPTIONAL SPARK + GBT MODEL
@@ -69,7 +66,6 @@ spark = None
 
 if os.path.isdir(PIPELINE_PATH):
     try:
-        print("Starting Spark session for GBT pipeline...")
         from pyspark.sql import SparkSession
         from pyspark.ml import PipelineModel
 
@@ -84,9 +80,7 @@ if os.path.isdir(PIPELINE_PATH):
         gbt_loaded = True
         print("GBT PipelineModel loaded.")
     except Exception as e:
-        print(f"GBT not available: {e}")
-else:
-    print("GBT pipeline folder not found - Spark disabled.")
+        pass
 
 # ==============================
 # SVM FALLBACK MODEL
@@ -197,6 +191,7 @@ delay_lookup   = {}
 coords_lookup  = {}
 weather_lookup = {}
 airports_list  = []
+airports_display = {}
 
 try:
     df_delay = pd.read_csv(DELAY_LOOKUP)
@@ -205,10 +200,27 @@ try:
     for _, r in df_coords.iterrows():
         coords_lookup[r["IATA_CODE"]] = (float(r["LATITUDE"]), float(r["LONGITUDE"]))
     airports_list = sorted(delay_lookup.keys())
+
+    # Build clean airport display: CODE — Airport Name (City, State)
+    try:
+        df_geo = pd.read_csv(P.RAW_AIRPORTS)
+        for _, r in df_geo.iterrows():
+            c = str(r["IATA_CODE"]).strip()
+            name = str(r.get("AIRPORT", "")).strip()
+            city = str(r.get("CITY", "")).strip()
+            st = str(r.get("STATE", "")).strip()
+            loc = f"{city}, {st}" if st and st != "nan" else city
+            airports_display[c] = f"{c} — {name} ({loc})" if loc else f"{c} — {name}"
+    except Exception:
+        pass
+    for c in airports_list:
+        airports_display.setdefault(c, c)
     print(f"Loaded {len(airports_list)} airports.")
 except Exception as e:
     print(f"Lookup load error: {e}")
     airports_list = ["ATL","DFW","LAX","ORD","DEN","JFK","SFO","BOS","EWR","MIA"]
+    for c in airports_list:
+        airports_display[c] = c
 
 try:
     df_w = pd.read_csv(WEATHER_LOOKUP)
@@ -460,13 +472,8 @@ def get_delay_avg(airport):
     return float(delay_lookup.get(airport, 0.20))
 
 def log_prediction(doc):
-    """Safely insert a prediction document into MongoDB."""
-    if not mongo_ok:
-        return
-    try:
-        mongo_col.insert_one(doc)
-    except Exception as e:
-        print(f"MongoDB insert error: {e}")
+    """Safely insert a prediction document into the active database (PostgreSQL / SQLite)."""
+    db.save_prediction(doc)
 
 def get_route_stats(dep, arr):
     """Route facts used as model inputs.
@@ -655,6 +662,29 @@ def api_autofill():
     tavg, prcp, wspd, pres, wx_override, wx_info = resolve_weather(dep, arr, date_str, month)
     est_dur, dist_type     = get_route_stats(dep, arr)
 
+    # Great-Circle distance & bearing calculation
+    dep_c = get_coords(dep)
+    arr_c = get_coords(arr)
+    dist_miles = 0
+    dist_km = 0
+    bearing_deg = 0
+    bearing_cardinal = ""
+    if dep and arr and dep in coords_lookup and arr in coords_lookup:
+        lat1, lon1 = math.radians(dep_c[0]), math.radians(dep_c[1])
+        lat2, lon2 = math.radians(arr_c[0]), math.radians(arr_c[1])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat / 2.0)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2.0)**2
+        c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+        dist_miles = round(3958.8 * c)
+        dist_km = round(6371.0 * c)
+
+        y = math.sin(dlon) * math.cos(lat2)
+        x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
+        bearing_deg = round((math.degrees(math.atan2(y, x)) + 360) % 360)
+        compass_pts = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+        bearing_cardinal = compass_pts[int((bearing_deg + 11.25) / 22.5) % 16]
+
     return jsonify({
         'day_of_week'     : day_name,
         'is_weekend'      : 'Yes' if is_wknd else 'No',
@@ -666,6 +696,13 @@ def api_autofill():
         'pres'            : round(pres, 2),
         'aircraft_age'    : 12,
         'dep_airport'     : dep,
+        'arr_airport'     : arr,
+        'dep_coords'      : list(dep_c),
+        'arr_coords'      : list(arr_c),
+        'dist_miles'      : dist_miles,
+        'dist_km'         : dist_km,
+        'bearing_deg'     : bearing_deg,
+        'bearing_cardinal': bearing_cardinal,
         'weather_source'  : wx_info['label'],
         'weather_detail'  : wx_info['detail'],
         'weather_used'    : bool(wx_override),
@@ -675,7 +712,9 @@ def api_autofill():
 @app.context_processor
 def inject_globals():
     """Inject airlines, airports and active-model facts into every template."""
-    return dict(airlines=AIRLINE_DISPLAY, airports=airports_list, model_info=model_info)
+    return dict(airlines=AIRLINE_DISPLAY, airports=airports_list,
+                airports_display=airports_display, coords_lookup=coords_lookup,
+                model_info=model_info)
 
 @app.route("/")
 def home():
@@ -866,7 +905,7 @@ def predict():
             'weather_override': bool(wx_override),
         }
 
-        # ── Log to MongoDB ──
+        # ── Log to Database (PostgreSQL) ──
         log_prediction({
             "timestamp"      : datetime.utcnow(),
             "source"         : "flask",
@@ -911,14 +950,9 @@ def predict():
 
 @app.route("/history")
 def history():
-    records = []
-    if mongo_ok:
-        try:
-            records = list(mongo_col.find({}, {"_id": 0}).sort("timestamp", -1).limit(25))
-        except Exception as e:
-            print(f"MongoDB fetch error: {e}")
+    records = db.get_history(limit=25)
     return render_template("history.html", records=records, stats=analytics_stats,
-                           mongo_ok=mongo_ok)
+                           db_ok=db.db_ok, db_engine=db.db_engine, mongo_ok=db.db_ok)
 
 @app.route("/api/analytics")
 def get_analytics():

@@ -1,7 +1,7 @@
-# database/ — prediction logging (Phase 2)
+# database/ — PostgreSQL Prediction Logging (Phase 2)
 
-Today the web app logs predictions to **MongoDB** (`aeropredict.predictions`, port 27017).
+The web app logs runtime flight predictions and serves the `/history` dashboard using **PostgreSQL** (port 5432).
 
-Phase 2 plan (owner **Dhruv Dharkar**, target **Nov 23**): replace MongoDB in
-`webapp/flask_app.py` with **PostgreSQL** (`psycopg2`) so predictions can be queried in pgAdmin 4.
-Keep the SQL schema / setup scripts for that here (e.g. `schema.sql`).
+* `schema.sql`: Full SQL schema for `flight_predictions` table with performance indexes and sample viva analytical queries.
+* `db_postgres.py`: PostgreSQL connection manager (via `psycopg2`) with zero-fail local fallback.
+* Configuration: Set `PG_USER`, `PG_PASSWORD`, `PG_HOST`, `PG_PORT` in `.env` (defaults to `postgres/postgres` on `localhost:5432`).

@@ -1,6 +1,9 @@
 # AeroPredict Git Ignore Rules
 
 # Python-related ignores
+.env
+*.db
+database/*.db
 __pycache__/
 *.py[cod]
 *$py.class
@@ -65,3 +68,4 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .DS_Store
+AEROPREDICT_2.0_ROADMAP.md

@@ -4,7 +4,7 @@ numpy>=1.22.0
 joblib>=1.1.0
 scikit-learn>=1.1.0
 torch>=2.0.0
-pymongo>=4.3.0
+psycopg2-binary>=2.9.0
 scipy>=1.10.0          # propagation statistics (Phase 2)
 matplotlib>=3.7.0     # ablation figures (Phase 2)
 # Optional - only for the legacy Spark GBT pipeline (make_gbt_flask_pipeline.py)
