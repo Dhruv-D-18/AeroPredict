@@ -925,6 +925,7 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius
 .prop-cols h4 { font-size: 13.5px; color: var(--navy); font-weight: 600; }
 .prop-cols .t-sub { font-size: 12px; margin-bottom: 10px; }
 .field-inline { flex-direction: row; align-items: center; min-height: 0; padding: 4px 4px 4px 10px; gap: 6px; }
+.field-inline select { min-width: 80px; height: 32px; font-weight: 700; text-transform: uppercase; padding: 2px 20px 2px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; color: var(--navy); }
 .field-inline input { width: 64px; font-weight: 700; text-transform: uppercase; padding: 0 4px; }
 .bar-list li.t-sub { display: block; }
 

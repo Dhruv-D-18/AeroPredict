@@ -112,8 +112,12 @@ python evaluation/run_ablation.py</pre>
             <div class="sim-grid">
                 <div class="field">
                     <label for="simAirport">{{ icon('map-pin') }} Airport</label>
-                    <input id="simAirport" list="netAirports" value="ORD" maxlength="4" spellcheck="false">
-                    <datalist id="netAirports"></datalist>
+                    <select id="simAirport">
+                        {% for code in airports %}
+                        <option value="{{ code }}" {% if code == 'ORD' %}selected{% endif %}>{{ airports_display.get(code, code) }}</option>
+                        {% endfor %}
+                    </select>
+                    {{ icon('chevron-down', 'caret') }}
                 </div>
                 <div class="sim-slider"><label for="simDelay">Extra delays <output id="simDelayOut">+25 pp</output></label>
                     <input type="range" id="simDelay" min="0" max="60" step="5" value="25"></div>
@@ -136,7 +140,11 @@ python evaluation/run_ablation.py</pre>
                     <div class="card-sub">Where delays at one airport spread next</div>
                 </div>
                 <div class="field field-inline">
-                    <input id="propAirport" list="netAirports" value="ORD" maxlength="4" spellcheck="false" aria-label="Airport">
+                    <select id="propAirport" aria-label="Airport">
+                        {% for code in airports %}
+                        <option value="{{ code }}" {% if code == 'ORD' %}selected{% endif %}>{{ code }}</option>
+                        {% endfor %}
+                    </select>
                     <button class="btn btn-secondary btn-sm" id="runProp">Show</button>
                 </div>
             </div>
@@ -353,7 +361,6 @@ python evaluation/run_ablation.py</pre>
                 `${(META.parameters || 0).toLocaleString()} parameters`;
             $("netDay").min = META.days[0]; $("netDay").max = META.days[1];
             $("netDay").value = META.default.day; $("netSlot").value = META.default.slot;
-            $("netAirports").innerHTML = META.airports.filter((a) => a.flights > 3000).map((a) => `<option value="${a.code}">`).join("");
             if (META.propagation) {
                 const o = META.propagation.overall;
                 $("propBanner").innerHTML = `<b>${o.routes_analysed.toLocaleString()}</b> routes analysed: airports linked by a route show
@@ -371,7 +378,7 @@ python evaluation/run_ablation.py</pre>
     $("runForecast").addEventListener("click", runForecast);
     $("runSim").addEventListener("click", runSim);
     $("runProp").addEventListener("click", runProp);
-    [$("simAirport"), $("propAirport")].forEach((el) => el.addEventListener("input", () => el.value = el.value.toUpperCase()));
+    $("propAirport").addEventListener("change", runProp);
     boot();
 })();
 </script>
